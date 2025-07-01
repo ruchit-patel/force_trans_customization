@@ -2,59 +2,22 @@
 // Uses immediate CSS injection + standard ERPNext classes to prevent sidebar flash
 
 // Immediate CSS injection to prevent sidebar flash
-(function() {
-	// Add CSS styles immediately when script loads
-	const style = document.createElement('style');
-	style.textContent = `
-		/* Hide form sidebar immediately for Issue forms */
-		body[data-route^="Form/Issue"] .form-sidebar,
-		body[data-route^="Form/Issue"] .layout-side-section {
-			display: none !important;
-		}
-		
-		/* Ensure main section takes full width */
-		body[data-route^="Form/Issue"] .layout-main-section {
-			width: 100% !important;
-			margin-right: 0 !important;
-		}
-	`;
-	document.head.appendChild(style);
-})();
+
 
 frappe.ui.form.on("Issue", {
 	onload: function(frm) {
-		// Hide immediately on load to prevent sidebar flash
-		$(document.body).addClass("hide-form-sidebar");
-		
-		// Additional immediate hiding
-		if (frm.page && frm.page.sidebar) {
-			frm.page.sidebar.hide();
-			frm.page.sidebar.addClass("hide-sidebar");
-		}
-		
-		// Hide sidebar element directly
-		$('.form-sidebar').hide();
-		$('.layout-side-section').hide();
-
-		
 		initialize_roleprofile_based_features(frm);
 	},
 	
 	refresh: function(frm) {
-		// Add CSS class to hide form sidebar (standard ERPNext approach)
-		$(document.body).addClass("hide-form-sidebar");
-		
-		// Ensure sidebar wrapper is hidden
-		if (frm.page && frm.page.sidebar) {
-			frm.page.sidebar.addClass("hide-sidebar");
-			frm.page.sidebar.hide();
-		}
-		
-		// Hide specific sidebar sections to ensure they stay hidden
-		if (frm.sidebar && frm.sidebar.sidebar) {
-			frm.sidebar.sidebar.hide();
-		}
+		const collection = document.getElementsByClassName('form-assignments');
+		collection[0].hidden=true;
 
+		const collection2 = document.getElementsByClassName('form-tags');
+		collection2[0].hidden=true;
+
+		const collection3 = document.getElementsByClassName('form-shared');
+		collection3[0].hidden=true;
 		// Add "Assign to Me" button
 		add_assign_to_me_button(frm);
 	}
