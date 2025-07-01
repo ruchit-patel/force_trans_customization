@@ -5,10 +5,11 @@ This module contains permission query functions that restrict data access based 
 
 IMPORTANT SETUP REQUIREMENTS:
 1. Ensure you have the 'custom_assigned_csm_team' field added to the Issue doctype
-2. Create User Groups in the system (User Group doctype) 
-3. Assign users to appropriate User Groups via the User Group Member child table
-4. Assign appropriate roles to users (CSM, Customer Success Manager, etc.)
-5. Create Role Profiles (like "Tracking Team", "Accounting Team") and assign them to users
+2. Ensure you have the 'custom_users_assigned' Table MultiSelect field added to the Issue doctype (uses Team User Assignment child table)
+3. Create User Groups in the system (User Group doctype) 
+4. Assign users to appropriate User Groups via the User Group Member child table
+5. Assign appropriate roles to users (CSM, Customer Success Manager, etc.)
+6. Create Role Profiles (like "Tracking Team", "Accounting Team") and assign them to users
 
 CONFIGURATION:
 To use these permission functions, you need to add them to your doctype's permission hooks.
@@ -32,6 +33,7 @@ QUERY-LEVEL PERMISSIONS (issue_query):
 - SHARED DOCUMENTS: Issues shared with a user (via Share button) appear in their list regardless of restrictions
 - If a user has any of the defined Support Team roles, they will see Issues where:
   - The Issue's custom_assigned_csm_team field matches their assigned User Group(s), OR
+  - The user is individually assigned to the Issue via custom_users_assigned table, OR
   - The Issue has been explicitly shared with them
 - If a user has "Tracking Team" role profile, they will see Issues where:
   - The Issue status is NOT "New", "In Review", or "Waiting on Customer", OR
@@ -46,8 +48,9 @@ DOCUMENT-LEVEL PERMISSIONS (issue_has_permission):
 - Controls access to individual Issue documents
 - SHARED DOCUMENTS: If an Issue is shared with a user (via Share button), they get access regardless of restrictions
 - If a user has any of the defined Support Team roles:
-  - They can only access Issues where custom_assigned_csm_team matches their assigned User Group(s)
-  - They get "Permission Denied" for Issues outside their groups (unless shared)
+  - They can access Issues where custom_assigned_csm_team matches their assigned User Group(s), OR
+  - They are individually assigned to the Issue via custom_users_assigned table
+  - They get "Permission Denied" for Issues outside their groups and not individually assigned (unless shared)
 - If a user has "Tracking Team" role profile:
   - They cannot access Issues with status "New", "In Review", or "Waiting on Customer"
   - They get "Permission Denied" for Issues with these statuses (unless shared)
@@ -145,6 +148,16 @@ def issue_query(user):
                     user_group_conditions = "', '".join(user_groups)
                     conditions.append(f"`tabIssue`.custom_assigned_csm_team IN ('{user_group_conditions}')")
             
+            # Add condition for individually assigned users (custom_users_assigned table)
+            # This allows users to see issues they're individually assigned to via the new assignment system
+            conditions.append(f"""EXISTS (
+                SELECT 1 FROM `tabTeam User Assignment` 
+                WHERE `tabTeam User Assignment`.parent = `tabIssue`.name 
+                AND `tabTeam User Assignment`.parenttype = 'Issue'
+                AND `tabTeam User Assignment`.parentfield = 'custom_users_assigned'
+                AND `tabTeam User Assignment`.user_assigned = '{user}'
+            )""")
+            
             # Add shared documents condition if any documents are shared
             if shared_issues:
                 shared_conditions = "', '".join(shared_issues)
@@ -154,8 +167,14 @@ def issue_query(user):
             if conditions:
                 return f"({' OR '.join(conditions)})"
             else:
-                # CSM user with no groups and no shared docs - allow all access
-                return ""
+                # CSM user with no groups and no shared docs - fallback to individual assignment check
+                return f"""EXISTS (
+                    SELECT 1 FROM `tabTeam User Assignment` 
+                    WHERE `tabTeam User Assignment`.parent = `tabIssue`.name 
+                    AND `tabTeam User Assignment`.parenttype = 'Issue'
+                    AND `tabTeam User Assignment`.parentfield = 'custom_users_assigned'
+                    AND `tabTeam User Assignment`.user_assigned = '{user}'
+                )"""
     except Exception as e:
         # Log error and allow access if there's an issue (fail-safe approach)
         frappe.log_error(f"Error in issue_query permission function: {str(e)}", "Permissions Error")
@@ -207,6 +226,22 @@ def issue_has_permission(doc, user):
         
         # Check if user has any CSM role
         if any(role in user_roles for role in csm_roles):
+            # Check if user is individually assigned to this issue via custom_users_assigned table
+            individually_assigned = frappe.get_all(
+                "Team User Assignment",
+                filters={
+                    "parent": doc.name,
+                    "parenttype": "Issue",
+                    "parentfield": "custom_users_assigned",
+                    "user_assigned": user
+                },
+                limit=1
+            )
+            
+            if individually_assigned:
+                # User is individually assigned to this issue - grant access
+                return True
+            
             # Find which user groups this user belongs to
             user_groups = frappe.get_all(
                 "User Group Member",
@@ -221,11 +256,12 @@ def issue_has_permission(doc, user):
                 if doc_user_group and doc_user_group in user_groups:
                     return True
                 else:
-                    # User doesn't have access to this specific Issue
+                    # User doesn't have access to this specific Issue via team assignment
                     return False
             else:
-                # CSM user is not assigned to any user group, allow access
-                return True
+                # CSM user is not assigned to any user group - check individual assignment only
+                # (individual assignment was already checked above, so deny access here)
+                return False
     except Exception as e:
         # Log error and allow access if there's an issue (fail-safe approach)
         frappe.log_error(f"Error in issue_has_permission function: {str(e)}", "Permissions Error")
