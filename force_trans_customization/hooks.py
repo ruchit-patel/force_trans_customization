@@ -7,7 +7,16 @@ app_license = "mit"
 
 # Apps
 # ------------------
+permission_query_conditions = {
+ "Issue": "force_trans_customization.permissions.issue_query",
+}
 
+has_permission = {
+ "Issue": "force_trans_customization.permissions.issue_has_permission",
+}
+
+doctype_js = {"Issue" : "custom/issue_form.js"}
+doctype_list_js = {"Issue" : "custom/issue_list.js"}
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page
@@ -242,3 +251,20 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+fixtures = [
+    {
+        "doctype": "Role Profile",
+        "filters": {
+            "name": ["in", ["Safety Team", "Tracking Team", "Accounting Team", "CSM Team"]]
+        }
+    },
+    {
+        "doctype": "Custom DocPerm",
+		"filters": {
+			"role": ["in","Support Team"]
+		}
+	},
+	{
+        "doctype": "User Group"
+    }
+]
