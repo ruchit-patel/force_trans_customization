@@ -652,6 +652,9 @@ def create_support_issue_from_communication(communication, sender_email, sender_
         if existing_issue:
             # Link the communication to the existing issue
             link_communication_to_issue(communication, existing_issue)
+
+            # Update issue status based on incoming customer reply
+            update_issue_status_on_customer_reply(existing_issue)
             return existing_issue
         
         # Create a new Issue
@@ -966,3 +969,46 @@ def get_user_group_from_email_account(email_account):
     except Exception as e:
         frappe.log_error(f"Error getting user group from email account: {str(e)}")
         return None
+
+
+def update_issue_status_on_customer_reply(issue_name):
+    """
+    When an incoming customer email is linked to an existing Issue, adjust the Issue status:
+    1. If the Issue is in "Waiting on Customer" state -> move to "In Review"
+    2. If the Issue is in "In Transit" state -> move to "In Transit Unmanaged"
+    Any other state is left unchanged.
+    """
+    try:
+        issue_doc = frappe.get_doc("Issue", issue_name)
+
+        # Perform status transitions only if needed
+        if issue_doc.status == "Waiting on Customer":
+            new_status = "In Review"
+        elif issue_doc.status == "In Transit":
+            new_status = "In Transit Unmanaged"
+        else:
+            return  # No change required
+
+        issue_doc.status = new_status
+        issue_doc.save(ignore_permissions=True)
+
+        # Log a comment on the Issue for traceability
+        frappe.get_doc({
+            "doctype": "Comment",
+            "comment_type": "Info",
+            "reference_doctype": "Issue",
+            "reference_name": issue_name,
+            "content": _(f"Issue status automatically updated to '{new_status}' based on customer reply."),
+            "comment_by": "Administrator" if frappe.flags.in_test else frappe.session.user
+        }).insert(ignore_permissions=True)
+
+        frappe.log_error(
+            message=f"Issue {issue_name} status updated to '{new_status}' after customer reply.",
+            title="Issue Status Auto-Update"
+        )
+
+    except Exception as e:
+        frappe.log_error(
+            message=f"Error updating status for Issue {issue_name}: {str(e)}",
+            title="Issue Status Update Error"
+        )

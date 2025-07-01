@@ -146,13 +146,11 @@ doctype_list_js = {"Issue" : "custom/issue_list.js"}
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Communication": {
+		"after_insert": "force_trans_customization.custom.communication.on_communication_after_insert"
+	}
+}
 
 # Scheduled Tasks
 # ---------------
