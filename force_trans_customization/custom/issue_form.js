@@ -170,6 +170,12 @@ function perform_normal_assignment(frm, current_user, team_name) {
 	new_row.team = team_name;
 	new_row.assigned_date = frappe.datetime.now_datetime();
 	
+	// Check if this is the first assignment and update status if needed
+	const total_assignments = frm.doc.custom_users_assigned.length;
+	if (total_assignments === 1 && frm.doc.status === 'New') {
+		frm.set_value('status', 'In Review');
+	}
+	
 	// Refresh the custom field
 	frm.refresh_field('custom_users_assigned');
 	
@@ -190,9 +196,14 @@ function perform_normal_assignment(frm, current_user, team_name) {
 					add_assign_to_me_button(frm);
 					
 					// Show success message
+					let message = `You have been successfully assigned to this issue.<br>Team: ${team_name}`;
+					if (total_assignments === 1) {
+						message += '<br><br>Issue status has been updated to "In Review".';
+					}
+					
 					frappe.msgprint({
 						title: __('Success'),
-						message: __(`You have been successfully assigned to this issue.<br>Team: ${team_name}`),
+						message: __(message),
 						indicator: 'green'
 					});
 					
@@ -215,6 +226,11 @@ function perform_normal_assignment(frm, current_user, team_name) {
 				if (index > -1) {
 					frm.doc.custom_users_assigned.splice(index, 1);
 					frm.refresh_field('custom_users_assigned');
+				}
+				
+				// Revert status change if assignment failed
+				if (total_assignments === 1) {
+					frm.set_value('status', 'New');
 				}
 				
 				frappe.msgprint({
@@ -251,6 +267,12 @@ function perform_team_takeover(frm, new_user, team_name, previous_user) {
 	new_row.team = team_name;
 	new_row.assigned_date = frappe.datetime.now_datetime();
 	
+	// Check if this is the first assignment and update status if needed
+	const total_assignments = frm.doc.custom_users_assigned.length;
+	if (total_assignments === 1 && frm.doc.status === 'New') {
+		frm.set_value('status', 'In Review');
+	}
+	
 	// Force the document to be marked as dirty/changed
 	frm.dirty();
 	
@@ -286,6 +308,11 @@ function perform_team_takeover(frm, new_user, team_name, previous_user) {
 						message += `<strong>Previous:</strong> ${previous_user}<br>`;
 						message += `<strong>New:</strong> ${new_user}<br>`;
 						message += `<strong>Team:</strong> ${team_name}`;
+						
+						// Add status change notification if this was the first assignment
+						if (total_assignments === 1) {
+							message += `<br><br>Issue status has been updated to "In Review".`;
+						}
 						
 						if (!remove_r.exc && !assign_r.exc) {
 							message += `<br>`;
@@ -361,6 +388,12 @@ function unassign_current_user_from_issue(frm) {
         new_row.assigned_date = row.assigned_date;
     });
     
+    // Check if no assignments remain and revert status to "New" if needed
+    const remaining_assignments = frm.doc.custom_users_assigned.length;
+    if (remaining_assignments === 0 && frm.doc.status === 'In Review') {
+        frm.set_value('status', 'New');
+    }
+    
     // Force the document to be marked as dirty/changed
     frm.dirty();
 
@@ -383,9 +416,16 @@ function unassign_current_user_from_issue(frm) {
                 
                 // Show success message based on assignment removal result
                 if (!assign_r.exc) {
+                    let message = __('You have been successfully unassigned from this issue.');
+                    
+                    // Add status change notification if no assignments remain
+                    if (remaining_assignments === 0) {
+                        message += '<br><br>Issue status has been reverted to "New" as no assignments remain.';
+                    }
+                    
                     frappe.msgprint({
                         title: __('Success'),
-                        message: __('You have been successfully unassigned from this issue.'),
+                        message: message,
                         indicator: 'green'
                     });
                     
@@ -395,9 +435,16 @@ function unassign_current_user_from_issue(frm) {
                     }
                 } else {
                     // ERPNext unassignment failed but custom field was updated
+                    let message = __('Custom field updated, but ERPNext assignment removal failed. You may still appear in the assignment panel.');
+                    
+                    // Add status change notification if no assignments remain
+                    if (remaining_assignments === 0) {
+                        message += '<br><br>Issue status has been reverted to "New" as no assignments remain.';
+                    }
+                    
                     frappe.msgprint({
                         title: __('Partial Success'),
-                        message: __('Custom field updated, but ERPNext assignment removal failed. You may still appear in the assignment panel.'),
+                        message: message,
                         indicator: 'orange'
                     });
                     console.error('ERPNext unassignment error:', assign_r.exc);
