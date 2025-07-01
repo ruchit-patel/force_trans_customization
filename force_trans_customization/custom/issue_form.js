@@ -121,35 +121,34 @@ function add_assign_to_me_button(frm) {
 	frm.remove_custom_button('Assign to Me');
 	frm.remove_custom_button('Unassign from Me');
 	
-	// Check if current user is already assigned
-	const existing_assignment = frm.doc.custom_users_assigned?.find(
-		row => row.user_assigned === current_user
-	);
-	
-	if (existing_assignment) {
-		// Show "Unassign from Me" button
-		frm.add_custom_button('Unassign from Me', function() {
-			unassign_current_user_from_issue(frm);
-		}).addClass('btn-danger');
-	} else {
-		// Show "Assign to Me" button
-		frm.add_custom_button('Assign to Me', function() {
-			assign_current_user_to_issue(frm);
-		}).addClass('btn-primary');
-	}
+	// Check if current user is already assigned using ERPNext's assignment system
+	check_user_assignment(frm, current_user).then((is_assigned) => {
+		if (is_assigned) {
+			// Show "Unassign from Me" button
+			frm.add_custom_button('Unassign from Me', function() {
+				unassign_current_user_from_issue(frm);
+			}).addClass('btn-danger');
+		} else {
+			// Show "Assign to Me" button
+			frm.add_custom_button('Assign to Me', function() {
+				assign_current_user_to_issue(frm);
+			}).addClass('btn-primary');
+		}
+	});
 }
 
-// Function to assign current user to the issue
+// Function to assign current user to the issue using BOTH custom field AND ERPNext's native assignment
 function assign_current_user_to_issue(frm) {
 	const current_user = frappe.session.user;
 	
-	// Get user's team information
+	// First, get user's team information for custom field
 	frappe.call({
 		method: "force_trans_customization.api.user_utils.get_current_user_role_profile",
 		callback: function(r) {
+			let team_name = 'General';
+			
 			if (r.message) {
 				const role_profile = r.message.role_profile_name;
-				let team_name = '';
 				
 				// Map role profile to team name
 				switch(role_profile) {
@@ -168,98 +167,100 @@ function assign_current_user_to_issue(frm) {
 					default:
 						team_name = role_profile || 'General';
 				}
-				
-				// Add new row to the custom_users_assigned table
-				const new_row = frm.add_child('custom_users_assigned');
-				new_row.user_assigned = current_user;
-				new_row.team = team_name;
-				new_row.assigned_date = frappe.datetime.now_datetime();
-				
-				// Refresh the field to show the new row
-				frm.refresh_field('custom_users_assigned');
-				
-				// Save the form immediately
-				frm.save().then(() => {
-					// Update button to show "Unassign from Me" after successful save
-					add_assign_to_me_button(frm);
-					
-					// Show success message
-					frappe.msgprint({
-						title: __('Success'),
-						message: __('You have been successfully assigned to this issue.'),
-						indicator: 'green'
-					});
-				}).catch((error) => {
-					// Handle save error
-					frappe.msgprint({
-						title: __('Error'),
-						message: __('Failed to save assignment. Please try again or save manually.'),
-						indicator: 'red'
-					});
-					console.error('Assignment save error:', error);
-				});
-			} else {
-				// Fallback if role profile API fails
-				const new_row = frm.add_child('custom_users_assigned');
-				new_row.user_assigned = current_user;
-				new_row.team = 'General';
-				new_row.assigned_date = frappe.datetime.now_datetime();
-				
-				frm.refresh_field('custom_users_assigned');
-				
-				// Save the form immediately
-				frm.save().then(() => {
-					// Update button to show "Unassign from Me" after successful save
-					add_assign_to_me_button(frm);
-					
-					frappe.msgprint({
-						title: __('Success'),
-						message: __('You have been assigned to this issue with default team.'),
-						indicator: 'green'
-					});
-				}).catch((error) => {
-					// Handle save error
-					frappe.msgprint({
-						title: __('Error'),
-						message: __('Failed to save assignment. Please try again or save manually.'),
-						indicator: 'red'
-					});
-					console.error('Assignment save error:', error);
-				});
 			}
+			
+			// Step 1: Add to custom multi-select field
+			const new_row = frm.add_child('custom_users_assigned');
+			new_row.user_assigned = current_user;
+			new_row.team = team_name;
+			new_row.assigned_date = frappe.datetime.now_datetime();
+			
+			// Refresh the custom field
+			frm.refresh_field('custom_users_assigned');
+			
+			// Step 2: Add to ERPNext's native assignment system
+			frappe.call({
+				method: "frappe.desk.form.assign_to.add",
+				args: {
+					doctype: frm.doc.doctype,
+					name: frm.doc.name,
+					assign_to: [current_user],
+					description: `Self-assigned to ${frm.doc.subject || frm.doc.name} (Team: ${team_name})`
+				},
+				callback: function(assign_r) {
+					if (!assign_r.exc) {
+						// Step 3: Save the form to persist custom field changes
+						frm.save().then(() => {
+							// Update button to show "Unassign from Me"
+							add_assign_to_me_button(frm);
+							
+							// Show success message
+							frappe.msgprint({
+								title: __('Success'),
+								message: __(`You have been successfully assigned to this issue.<br>Team: ${team_name}<br>Both custom tracking and ERPNext assignment updated.`),
+								indicator: 'green'
+							});
+							
+							// Refresh the assignment area in sidebar
+							if (frm.assign_to && frm.assign_to.refresh) {
+								frm.assign_to.refresh();
+							}
+						}).catch((save_error) => {
+							// If form save fails, show error but assignment still worked
+							frappe.msgprint({
+								title: __('Partial Success'),
+								message: __('ERPNext assignment succeeded, but failed to save custom field. Please save manually.'),
+								indicator: 'orange'
+							});
+							console.error('Form save error:', save_error);
+						});
+					} else {
+						// ERPNext assignment failed, remove the custom field entry
+						const index = frm.doc.custom_users_assigned.findIndex(row => row.user_assigned === current_user);
+						if (index > -1) {
+							frm.doc.custom_users_assigned.splice(index, 1);
+							frm.refresh_field('custom_users_assigned');
+						}
+						
+						frappe.msgprint({
+							title: __('Error'),
+							message: __('Failed to assign. Please try again.'),
+							indicator: 'red'
+						});
+						console.error('Assignment error:', assign_r.exc);
+					}
+				}
+			});
 		}
 	});
 }
 
+// Function to unassign current user from the issue using BOTH custom field AND ERPNext's native assignment
 function unassign_current_user_from_issue(frm) {
     const current_user = frappe.session.user;
     
-    // Find the rows to remove
-    const rows_to_remove = [];
-    frm.doc.custom_users_assigned?.forEach((row) => {
-        if (row.user_assigned === current_user) {
-            rows_to_remove.push(row);
-        }
-    });
+    // Check if user is assigned in custom field
+    const existing_assignments = frm.doc.custom_users_assigned?.filter(
+        row => row.user_assigned === current_user
+    );
     
-    if (rows_to_remove.length === 0) {
+    if (!existing_assignments || existing_assignments.length === 0) {
         frappe.msgprint({
             title: __('Not Assigned'),
-            message: __('You are not currently assigned to this issue.'),
+            message: __('You are not currently assigned to this issue in the custom tracking.'),
             indicator: 'orange'
         });
         return;
     }
     
-    // Store all rows except the ones to remove
+    // Step 1: Remove from custom multi-select field
     const remaining_rows = frm.doc.custom_users_assigned.filter(row => 
         row.user_assigned !== current_user
     );
     
-    // Clear the entire child table
+    // Clear and rebuild the custom field table
     frappe.model.clear_table(frm.doc, 'custom_users_assigned');
     
-    // Re-add all remaining rows
     remaining_rows.forEach((row) => {
         const new_row = frm.add_child('custom_users_assigned');
         new_row.user_assigned = row.user_assigned;
@@ -269,24 +270,91 @@ function unassign_current_user_from_issue(frm) {
     
     // Force the document to be marked as dirty/changed
     frm.dirty();
-    
-    // Refresh the field to show the updated table
+
+    // Refresh the custom field
     frm.refresh_field('custom_users_assigned');
     
-    // Save the form
-    frm.save().then(() => {
-        add_assign_to_me_button(frm);
-        frappe.msgprint({
-            title: __('Success'),
-            message: __('You have been successfully unassigned from this issue.'),
-            indicator: 'green'
-        });
-    }).catch((error) => {
-        frappe.msgprint({
-            title: __('Error'),
-            message: __('Failed to save unassignment. Please try again or save manually.'),
-            indicator: 'red'
-        });
-        console.error('Unassignment save error:', error);
+    // Step 2: Remove from ERPNext's native assignment system
+    frappe.call({
+        method: "frappe.desk.form.assign_to.remove",
+        args: {
+            doctype: frm.doc.doctype,
+            name: frm.doc.name,
+            assign_to: current_user
+        },
+        callback: function(assign_r) {
+            // Step 3: Save the form to persist custom field changes
+            frm.save().then(() => {
+                // Update button to show "Assign to Me"
+                add_assign_to_me_button(frm);
+                
+                // Show success message based on assignment removal result
+                if (!assign_r.exc) {
+                    frappe.msgprint({
+                        title: __('Success'),
+                        message: __('You have been successfully unassigned from this issue.<br>Both custom tracking and ERPNext assignment updated.'),
+                        indicator: 'green'
+                    });
+                    
+                    // Refresh the assignment area in sidebar
+                    if (frm.assign_to && frm.assign_to.refresh) {
+                        frm.assign_to.refresh();
+                    }
+                } else {
+                    // ERPNext unassignment failed but custom field was updated
+                    frappe.msgprint({
+                        title: __('Partial Success'),
+                        message: __('Custom field updated, but ERPNext assignment removal failed. You may still appear in the assignment panel.'),
+                        indicator: 'orange'
+                    });
+                    console.error('ERPNext unassignment error:', assign_r.exc);
+                }
+            }).catch((save_error) => {
+                // Form save failed, show error
+                frappe.msgprint({
+                    title: __('Error'),
+                    message: __('Failed to save unassignment. Please save manually.'),
+                    indicator: 'red'
+                });
+                console.error('Form save error:', save_error);
+            });
+        }
     });
+}
+
+// Helper function to check if current user is assigned using BOTH custom field AND ERPNext's assignment system
+function check_user_assignment(frm, user) {
+	return new Promise((resolve) => {
+		// First check custom field (primary source of truth)
+		const custom_assignment = frm.doc.custom_users_assigned?.find(
+			row => row.user_assigned === user
+		);
+		
+		if (custom_assignment) {
+			resolve(true); // User is assigned in custom field
+			return;
+		}
+		
+		// If not in custom field, check ERPNext's assignment system as fallback
+		frappe.call({
+			method: "frappe.client.get_list",
+			args: {
+				doctype: "ToDo",
+				filters: {
+					reference_type: frm.doc.doctype,
+					reference_name: frm.doc.name,
+					allocated_to: user,
+					status: ["!=", "Cancelled"]
+				},
+				fields: ["name"]
+			},
+			callback: function(r) {
+				if (r.message && r.message.length > 0) {
+					resolve(true); // User is assigned in ERPNext system
+				} else {
+					resolve(false); // User is not assigned in either system
+				}
+			}
+		});
+	});
 }
