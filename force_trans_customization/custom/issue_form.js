@@ -13,9 +13,6 @@ frappe.ui.form.on("Issue", {
 		const collection = document.getElementsByClassName('form-assignments');
 		collection[0].hidden=true;
 
-		const collection2 = document.getElementsByClassName('form-tags');
-		collection2[0].hidden=true;
-
 		const collection3 = document.getElementsByClassName('form-shared');
 		collection3[0].hidden=true;
 		// Add "Assign to Me" button
