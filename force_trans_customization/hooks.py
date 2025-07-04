@@ -152,6 +152,14 @@ doc_events = {
 	}
 }
 
+# Email Hooks
+# ---------------
+# Hook to modify email headers before sending
+
+make_email_body_message = [
+    "force_trans_customization.utils.email_utils.modify_email_headers"
+]
+
 # Scheduled Tasks
 # ---------------
 

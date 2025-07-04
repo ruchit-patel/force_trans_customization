@@ -24,7 +24,7 @@ frappe.ui.form.on("Issue", {
 function initialize_roleprofile_based_features(frm) {
 	// Get current user's role profile information
 	frappe.call({
-		method: "force_trans_customization.api.user_utils.get_current_user_role_profile",
+		method: "force_trans_customization.utils.user_utils.get_current_user_role_profile",
 		callback: function(r) {
 			if (r.message) {
 				frm._user_profile_info = r.message;
@@ -103,7 +103,7 @@ function assign_current_user_to_issue(frm) {
 	
 	// First, get user's team information for custom field
 	frappe.call({
-		method: "force_trans_customization.api.user_utils.get_current_user_role_profile",
+		method: "force_trans_customization.utils.user_utils.get_current_user_role_profile",
 		callback: function(r) {
 			let team_name = 'General';
 			
@@ -136,21 +136,22 @@ function assign_current_user_to_issue(frm) {
 			
 			if (existing_team_assignment) {
 				// Show takeover confirmation dialog
-				frappe.confirm(
-					__(`A team member from ${team_name} team is already working on this issue: <strong>${existing_team_assignment.user_assigned}</strong><br><br>Do you want to take over this assignment?`),
-					function() {
-						// User confirmed takeover - remove existing team member and assign to current user
-						perform_team_takeover(frm, current_user, team_name, existing_team_assignment.user_assigned);
-					},
-					function() {
-						// User cancelled - do nothing
-						frappe.msgprint({
-							title: __('Assignment Cancelled'),
-							message: __('Assignment cancelled. The existing team member remains assigned.'),
-							indicator: 'blue'
+				// frappe.confirm(
+				// 	__(`A team member from ${team_name} team is already working on this issue: <strong>${existing_team_assignment.user_assigned}</strong><br><br>Do you want to take over this assignment?`),
+				// 	function() {
+				// 		// User confirmed takeover - remove existing team member and assign to current user
+				// 		perform_team_takeover(frm, current_user, team_name, existing_team_assignment.user_assigned);
+				// 	},
+				// 	function() {
+				// 		// User cancelled - do nothing
+						
+				// 	}
+				//);
+				frappe.msgprint({
+							title: __('Team Member Already Assigned'),
+							message: __('This issue is already being handled by a member of your team and cannot be reassigned to you. Please contact the Administrator if you wish to take over this issue.'),
+							indicator: 'red'
 						});
-					}
-				);
 			} else {
 				// No team conflict - proceed with normal assignment
 				perform_normal_assignment(frm, current_user, team_name);
