@@ -127,6 +127,35 @@
         return getCustomTagColor(txt);
     };
     
+    // ===== TAGS PERSISTENCE FUNCTIONALITY =====
+    
+    // Store original ListView methods
+    const originalListView = frappe.views.ListView;
+    
+    // Override ListView to add tags persistence
+    frappe.views.ListView = class CustomListView extends originalListView {
+        setup_tag_event() {
+            // Initialize tags_shown from user settings, default to true
+            this.tags_shown = this.view_user_settings.tags_shown !== undefined 
+                ? this.view_user_settings.tags_shown 
+                : true;
+            
+            // Apply the saved state immediately
+            this.toggle_tags();
+            
+            this.list_sidebar &&
+                this.list_sidebar.parent.on("click", ".list-tag-preview", () => {
+                    this.tags_shown = !this.tags_shown;
+                    this.toggle_tags();
+                    // Save the preference to user settings
+                    this.save_view_user_settings({
+                        tags_shown: this.tags_shown
+                    });
+                });
+        }
+        
+    };
+    
     // Load color map when DOM is ready
     $(document).ready(function() {
         // Load tag category colors after a short delay to ensure frappe is fully loaded
@@ -134,4 +163,5 @@
     });
     
     console.log('✅ Custom tag color system loaded with Tag Category support - frappe.get_palette overridden');
+    console.log('✅ Tags persistence functionality added - tags will show by default and remember user preference');
 })(); 
