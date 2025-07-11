@@ -6,6 +6,7 @@
 
 frappe.ui.form.on("Issue", {
 	onload: function(frm) {
+		inject_issue_labels_in_email_dialog(frm);
 		initialize_roleprofile_based_features(frm);
 	},
 	
@@ -495,4 +496,49 @@ function check_user_assignment(frm, user) {
 			}
 		});
 	});
+}
+
+// --- PATCH: Inject Issue Labels as read-only tags in Email Composer dialog ---
+function inject_issue_labels_in_email_dialog(frm) {
+    // Patch only once
+    if (window.__issue_email_tag_patch_applied) return;
+    window.__issue_email_tag_patch_applied = true;
+
+    // Save original CommunicationComposer
+    const OriginalComposer = frappe.views.CommunicationComposer;
+
+    frappe.views.CommunicationComposer = class extends OriginalComposer {
+        make() {
+            super.make();
+            // Only for Issue doctype
+            if (this.frm && this.frm.doctype === "Issue") {
+                // Wait for dialog to be fully rendered
+                setTimeout(() => {
+                    try {
+                        const subjectField = this.dialog.fields_dict.subject;
+                        if (!subjectField) return;
+                        // Find the subject field wrapper
+                        const $subjectWrapper = $(subjectField.wrapper);
+                        // Remove any previous tags
+                        $subjectWrapper.siblings('.issue-label-tags').remove();
+                        // Get tags from _user_tags (default Frappe tags)
+                        const tagString = this.frm.doc._user_tags || '';
+                        const tags = tagString.split(',').map(t => t.trim()).filter(Boolean);
+                        if (!tags.length) return;
+                        const tagsHtml = `<div class="issue-label-tags" style="margin: 8px 0 0 0; display: flex; flex-wrap: wrap; gap: 6px;">
+                            ${tags.map(tag => {
+                                const palette = frappe.get_palette ? frappe.get_palette(tag) : ["#888", "#fff"];
+                                const bg = Array.isArray(palette) ? palette[0] : palette;
+                                const color = Array.isArray(palette) ? palette[1] : "#fff";
+                                const bgStyle = (typeof bg === 'string' && bg.startsWith('--')) ? `var(${bg})` : bg;
+                                const colorStyle = (typeof color === 'string' && color.startsWith('--')) ? `var(${color})` : color;
+                                return `<span style="background: ${bgStyle}; color: ${colorStyle}; border-radius: 12px; padding: 2px 10px; font-size: 12px; font-weight: 500; display: inline-block;">${frappe.utils.escape_html(tag)}</span>`;
+                            }).join('')}
+                        </div>`;
+                        $subjectWrapper.after(tagsHtml);
+                    } catch (e) { console.warn('Issue label tag inject error', e); }
+                }, 0);
+            }
+        }
+    };
 }
