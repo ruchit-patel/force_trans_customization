@@ -18,6 +18,80 @@ frappe.ui.form.on("Issue", {
 		collection3[0].hidden=true;
 		// Add "Assign to Me" button
 		add_assign_to_me_button(frm);
+
+		// --- Timeline patch logic (Show Only Emails switch) ---
+		function patchTimelineInstance() {
+			if (frm.timeline && !frm.timeline.__force_trans_email_switch_patched) {
+				frm.timeline.__force_trans_email_switch_patched = true;
+				
+				// Save originals
+				const origSetup = frm.timeline.setup_activity_toggle.bind(frm.timeline);
+				const origPrepare = frm.timeline.prepare_timeline_contents.bind(frm.timeline);
+				
+				// Patch setup_activity_toggle to add our switch
+				frm.timeline.setup_activity_toggle = function() {
+					//origSetup();
+					const me = this;
+					
+					// Only add switch if not already present
+					if (this.timeline_wrapper.find('.show-emails-only-switch').length > 0) {
+						return;
+					}
+					
+					// Call original setup to ensure all elements are created
+					//origSetup();
+					
+					const $activityTitle = this.timeline_wrapper.find(".timeline-item.activity-title").first();
+					if ($activityTitle.length === 0) return;
+					
+					// Create "Show Only Emails" switch
+					const $switchWrapper = $(`
+						<div class="d-flex align-items-center show-emails-only-switch">
+							<span style="color: var(--text-light); margin:0px 6px;">Show Only Emails</span>
+							<label class="switch">
+								<input type="checkbox" ${me.only_emails_switch ? "checked" : ""}>
+								<span class="slider round"></span>
+							</label>
+						</div>
+					`);
+					
+					$switchWrapper.find("input[type=checkbox]").on("change", function() {
+						me.only_emails_switch = this.checked;
+						me.render_timeline_items();
+					});
+					
+					// Insert before the "Show all activity" switch if it exists
+					const $showAllActivity = $activityTitle.find('.show-all-activity');
+					if ($showAllActivity.length > 0) {
+						$showAllActivity.before($switchWrapper);
+					} else {
+						// Fallback: append to activity title	
+						$activityTitle.append($switchWrapper);
+					}
+				};
+				
+				// Patch prepare_timeline_contents to filter for emails only
+				frm.timeline.prepare_timeline_contents = function() {
+					if (this.only_emails_switch) {
+						this.timeline_items = [];
+						this.timeline_items.push(...this.get_email_communication_timeline_contents());
+						return;
+					}
+					origPrepare();
+				};
+				
+				// Re-render timeline only if setup function exists and hasn't been called yet
+				setTimeout(() => {
+					if (frm.timeline && frm.timeline.timeline_wrapper.find('.show-emails-only-switch').length === 0) {
+						frm.timeline.setup_activity_toggle();
+					}
+				}, 500);
+			} else if (!frm.timeline) {
+				setTimeout(patchTimelineInstance, 200);
+			}
+		}
+		patchTimelineInstance();
+		// --- End timeline patch logic ---
 	}
 }); 
 
