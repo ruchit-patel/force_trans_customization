@@ -4,3 +4,5 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+force_trans_customization.patches.v1_0_add_draft_status
+force_trans_customization.patches.v1_1_add_draft_to_delivery_status
