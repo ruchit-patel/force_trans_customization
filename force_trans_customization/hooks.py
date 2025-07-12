@@ -34,11 +34,9 @@ doctype_list_js = {"Issue" : "custom/issue_list.js"}
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/force_trans_customization/css/force_trans_customization.css"
 app_include_js = [
     "/assets/force_trans_customization/js/custom_tag_colors.js",
-    "/assets/force_trans_customization/js/communication_draft.js",
-    "/assets/force_trans_customization/js/enhanced_timeline.js"
+    "/assets/force_trans_customization/js/communication_draft.js"
 ]
 
 # include js, css files in header of web template

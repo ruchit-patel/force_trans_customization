@@ -37,28 +37,39 @@ force_trans_customization.communication_draft = {
             }
         };
 
-        // Override the original save_as_draft method to show a message
+        const original_save_as_draft = frappe.views.CommunicationComposer.prototype.save_as_draft;
         frappe.views.CommunicationComposer.prototype.save_as_draft = function() {
             if (this.dialog && this.frm) {
                 let form_values = this.dialog.get_values();
-                // Save to server-side draft
+                // Use draft_name if present (editing existing draft)
+                let draft_name = this.draft_name || (form_values && form_values.draft_name);
+                
+                console.log("Saving draft with draft_name:", draft_name);
+                
+                // Call our server-side save method
                 frappe.call({
                     method: "force_trans_customization.api.email_draft.save_draft",
                     args: {
                         doctype: this.frm.doctype,
                         docname: this.frm.docname,
                         subject: form_values.subject,
-                        content: form_values.content,
                         recipients: form_values.recipients,
+                        content: form_values.content,
                         cc: form_values.cc,
                         bcc: form_values.bcc,
                         sender: form_values.sender,
-                        email_template: form_values.email_template
+                        email_template: form_values.email_template,
+                        draft_name: draft_name
                     },
-                    callback: (r) => {
+                    callback: function(r) {
                         if (r.message && r.message.success) {
                             frappe.show_alert(__("Draft saved"), 3);
-                            // Refresh timeline to show draft
+                            // Update draft_name for future saves
+                            if (r.message.draft_name) {
+                                this.draft_name = r.message.draft_name;
+                                console.log("Updated draft_name to:", this.draft_name);
+                            }
+                            // Refresh timeline to show updated draft
                             if (this.frm && this.frm.timeline) {
                                 this.frm.timeline.refresh();
                             }
@@ -69,171 +80,14 @@ force_trans_customization.communication_draft = {
                                 indicator: "red"
                             });
                         }
-                    }
+                    }.bind(this)
                 });
+                
+                // Also call the original method for local storage
+                original_save_as_draft.call(this);
             }
         };
 
-        // Override the original delete_saved_draft method
-        const original_delete_saved_draft = frappe.views.CommunicationComposer.prototype.delete_saved_draft;
-        frappe.views.CommunicationComposer.prototype.delete_saved_draft = function() {
-            if (this.dialog && this.frm) {
-                // Get the current draft
-                frappe.call({
-                    method: "force_trans_customization.api.email_draft.get_drafts",
-                    args: {
-                        doctype: this.frm.doctype,
-                        docname: this.frm.docname
-                    },
-                    callback: (r) => {
-                        if (r.message && r.message.length > 0) {
-                            // Delete the first draft (most recent)
-                            const draft_name = r.message[0].name;
-                            frappe.call({
-                                method: "force_trans_customization.api.email_draft.delete_draft",
-                                args: {
-                                    draft_name: draft_name
-                                },
-                                callback: (delete_r) => {
-                                    if (delete_r.message && delete_r.message.success) {
-                                        frappe.show_alert(__("Draft deleted"), 3);
-                                        // Refresh timeline
-                                        if (this.frm && this.frm.timeline) {
-                                            this.frm.timeline.refresh();
-                                        }
-                                    }
-                                }
-                            });
-                        }
-                    }
-                });
-            }
-        };
-    },
-
-    // Add draft functionality to timeline
-    add_draft_to_timeline(draft_data) {
-        const timeline_item = $(`
-            <div class="timeline-item" data-draft-name="${draft_data.name}">
-                <div class="timeline-badge">
-                    <i class="fa fa-edit text-warning"></i>
-                </div>
-                <div class="timeline-content">
-                    <div class="timeline-heading">
-                        <span class="text-muted">${__("Draft")}</span>
-                        <span class="pull-right text-muted">
-                            ${frappe.datetime.global_date_format(draft_data.modified)}
-                        </span>
-                    </div>
-                    <div class="timeline-body">
-                        <div class="draft-subject">
-                            <strong>${draft_data.subject || __("No Subject")}</strong>
-                        </div>
-                        <div class="draft-recipients text-muted">
-                            ${__("To")}: ${draft_data.recipients || __("No recipients")}
-                        </div>
-                        <div class="draft-content">
-                            ${draft_data.content ? frappe.utils.strip_html_tags(draft_data.content).substring(0, 100) + "..." : __("No content")}
-                        </div>
-                        <div class="draft-actions mt-2">
-                            <button class="btn btn-xs btn-primary continue-draft" data-draft-name="${draft_data.name}">
-                                ${__("Continue Editing")}
-                            </button>
-                            <button class="btn btn-xs btn-success send-draft" data-draft-name="${draft_data.name}">
-                                ${__("Send")}
-                            </button>
-                            <button class="btn btn-xs btn-danger delete-draft" data-draft-name="${draft_data.name}">
-                                ${__("Delete")}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `);
-
-        // Add event handlers
-        timeline_item.find('.continue-draft').on('click', function() {
-            const draft_name = $(this).data('draft-name');
-            force_trans_customization.communication_draft.continue_editing_draft(draft_name);
-        });
-
-        timeline_item.find('.send-draft').on('click', function() {
-            const draft_name = $(this).data('draft-name');
-            force_trans_customization.communication_draft.send_draft(draft_name);
-        });
-
-        timeline_item.find('.delete-draft').on('click', function() {
-            const draft_name = $(this).data('draft-name');
-            force_trans_customization.communication_draft.delete_draft(draft_name);
-        });
-
-        return timeline_item;
-    },
-
-    continue_editing_draft(draft_name) {
-        frappe.call({
-            method: "force_trans_customization.api.email_draft.continue_editing_draft",
-            args: {
-                draft_name: draft_name
-            },
-            callback: (r) => {
-                if (r.message && r.message.success) {
-                    const draft = r.message.draft;
-                    
-                    // Open communication composer with draft data
-                    new frappe.views.CommunicationComposer({
-                        doc: {
-                            doctype: "Communication",
-                            name: draft.name
-                        },
-                        frm: cur_frm,
-                        subject: draft.subject,
-                        message: draft.content,
-                        recipients: draft.recipients,
-                        cc: draft.cc,
-                        bcc: draft.bcc,
-                        sender: draft.sender,
-                        email_template: draft.email_template,
-                        is_draft: true
-                    });
-                } else {
-                    frappe.msgprint({
-                        title: __("Error"),
-                        message: r.message ? r.message.message : __("Error loading draft"),
-                        indicator: "red"
-                    });
-                }
-            }
-        });
-    },
-
-    send_draft(draft_name) {
-        frappe.confirm(
-            __("Are you sure you want to send this draft?"),
-            () => {
-                frappe.call({
-                    method: "force_trans_customization.api.email_draft.send_draft",
-                    args: {
-                        draft_name: draft_name
-                    },
-                    callback: (r) => {
-                        if (r.message && r.message.success) {
-                            frappe.show_alert(__("Draft sent successfully"), 3);
-                            // Refresh timeline
-                            if (cur_frm && cur_frm.timeline) {
-                                cur_frm.timeline.refresh();
-                            }
-                        } else {
-                            frappe.msgprint({
-                                title: __("Error"),
-                                message: r.message ? r.message.message : __("Error sending draft"),
-                                indicator: "red"
-                            });
-                        }
-                    }
-                });
-            }
-        );
     },
 
     delete_draft(draft_name) {
@@ -264,6 +118,25 @@ force_trans_customization.communication_draft = {
             }
         );
     }
+};
+
+force_trans_customization.communication_draft.open_composer_with_draft = function(draft_doc) {
+    // Open the CommunicationComposer dialog with draft_doc's data
+    const composer = new frappe.views.CommunicationComposer({
+        doc: cur_frm.doc,
+        frm: cur_frm,
+        subject: draft_doc.subject,
+        recipients: draft_doc.recipients,
+        message: draft_doc.content, // Use 'message' instead of 'content'
+        cc: draft_doc.cc,
+        bcc: draft_doc.bcc,
+        sender: draft_doc.sender,
+        email_template: draft_doc.email_template,
+        // Track draft_name for updating
+        draft_name: draft_doc.name
+    });
+    // Attach draft_name to the composer instance for later use
+    composer.draft_name = draft_doc.name;
 };
 
 // Initialize when page loads

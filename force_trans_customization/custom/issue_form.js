@@ -18,82 +18,181 @@ frappe.ui.form.on("Issue", {
 		collection3[0].hidden=true;
 		// Add "Assign to Me" button
 		add_assign_to_me_button(frm);
+	},
 
-		// --- Timeline patch logic (Show Only Emails switch) ---
-		function patchTimelineInstance() {
-			if (frm.timeline && !frm.timeline.__force_trans_email_switch_patched) {
-				frm.timeline.__force_trans_email_switch_patched = true;
-				
-				// Save originals
-				const origSetup = frm.timeline.setup_activity_toggle.bind(frm.timeline);
-				const origPrepare = frm.timeline.prepare_timeline_contents.bind(frm.timeline);
-				
-				// Patch setup_activity_toggle to add our switch
-				frm.timeline.setup_activity_toggle = function() {
-					//origSetup();
-					const me = this;
-					
-					// Only add switch if not already present
-					if (this.timeline_wrapper.find('.show-emails-only-switch').length > 0) {
-						return;
-					}
-					
-					// Call original setup to ensure all elements are created
-					//origSetup();
-					
-					const $activityTitle = this.timeline_wrapper.find(".timeline-item.activity-title").first();
-					if ($activityTitle.length === 0) return;
-					
-					// Create "Show Only Emails" switch
-					const $switchWrapper = $(`
-						<div class="d-flex align-items-center show-emails-only-switch">
-							<span style="color: var(--text-light); margin:0px 6px;">Show Only Emails</span>
-							<label class="switch">
-								<input type="checkbox" ${me.only_emails_switch ? "checked" : ""}>
-								<span class="slider round"></span>
-							</label>
-						</div>
-					`);
-					
-					$switchWrapper.find("input[type=checkbox]").on("change", function() {
-						me.only_emails_switch = this.checked;
-						me.render_timeline_items();
-					});
-					
-					// Insert before the "Show all activity" switch if it exists
-					const $showAllActivity = $activityTitle.find('.show-all-activity');
-					if ($showAllActivity.length > 0) {
-						$showAllActivity.before($switchWrapper);
-					} else {
-						// Fallback: append to activity title	
-						$activityTitle.append($switchWrapper);
-					}
-				};
-				
-				// Patch prepare_timeline_contents to filter for emails only
-				frm.timeline.prepare_timeline_contents = function() {
-					if (this.only_emails_switch) {
-						this.timeline_items = [];
-						this.timeline_items.push(...this.get_email_communication_timeline_contents());
-						return;
-					}
-					origPrepare();
-				};
-				
-				// Re-render timeline only if setup function exists and hasn't been called yet
-				setTimeout(() => {
-					if (frm.timeline && frm.timeline.timeline_wrapper.find('.show-emails-only-switch').length === 0) {
-						frm.timeline.setup_activity_toggle();
-					}
-				}, 500);
-			} else if (!frm.timeline) {
-				setTimeout(patchTimelineInstance, 200);
+	    // Remove add_edit_draft_buttons logic
+    // Instead, use timeline_refresh event
+    timeline_refresh: function(frm) {
+        // Add edit buttons for draft communications
+        if (!frm.timeline.wrapper.data("edit-draft-event-attached")) {
+            // Attach event handler for edit draft buttons
+            frm.timeline.wrapper.on("click", ".btn-edit-draft", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                let comm_name = e.currentTarget.closest(".timeline-item").getAttribute("data-name");
+                if (comm_name) {
+                    frappe.call({
+                        method: "frappe.client.get",
+                        args: {
+                            doctype: "Communication",
+                            name: comm_name
+                        },
+                        callback: function(r) {
+                            if (r.message) {
+                                force_trans_customization.communication_draft.open_composer_with_draft(r.message);
+                            } else {
+                                frappe.msgprint({
+                                    title: __("Error"),
+                                    message: __("Could not load draft communication"),
+                                    indicator: "red"
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+
+			frm.timeline.wrapper.on("click", ".btn-delete-draft", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                let comm_name = e.currentTarget.closest(".timeline-item").getAttribute("data-name");
+                if (comm_name) {
+                    // Call the delete draft function from communication_draft.js
+                    force_trans_customization.communication_draft.delete_draft(comm_name);
+                }
+            });
+
+            frm.timeline.wrapper.data("edit-draft-event-attached", true);
+        }
+
+        // Add edit buttons to draft communications
+        add_edit_delete_buttons_to_drafts(frm);
+
+		patchTimelineInstance(frm);
+    }
+}); 
+
+
+// --- Timeline patch logic (Show Only Emails switch) ---
+function patchTimelineInstance(frm) {
+	if (frm.timeline && !frm.timeline.__force_trans_email_switch_patched) {
+		frm.timeline.__force_trans_email_switch_patched = true;
+		
+		// Save originals
+		const origSetup = frm.timeline.setup_activity_toggle.bind(frm.timeline);
+		const origPrepare = frm.timeline.prepare_timeline_contents.bind(frm.timeline);
+		
+		// Patch setup_activity_toggle to add our switch
+		frm.timeline.setup_activity_toggle = function() {
+			//origSetup();
+			const me = this;
+			
+			// Only add switch if not already present
+			if (this.timeline_wrapper.find('.show-emails-only-switch').length > 0) {
+				return;
+			}
+			
+			// Call original setup to ensure all elements are created
+			//origSetup();
+			
+			const $activityTitle = this.timeline_wrapper.find(".timeline-item.activity-title").first();
+			if ($activityTitle.length === 0) return;
+			
+			// Create "Show Only Emails" switch
+			const $switchWrapper = $(`
+				<div class="d-flex align-items-center show-emails-only-switch">
+					<span style="color: var(--text-light); margin:0px 6px;">Show Only Emails</span>
+					<label class="switch">
+						<input type="checkbox" ${me.only_emails_switch ? "checked" : ""}>
+						<span class="slider round"></span>
+					</label>
+				</div>
+			`);
+			
+			$switchWrapper.find("input[type=checkbox]").on("change", function() {
+				me.only_emails_switch = this.checked;
+				me.render_timeline_items();
+			});
+			
+			// Insert before the "Show all activity" switch if it exists
+			const $showAllActivity = $activityTitle.find('.show-all-activity');
+			if ($showAllActivity.length > 0) {
+				$showAllActivity.before($switchWrapper);
+			} else {
+				// Fallback: append to activity title	
+				$activityTitle.append($switchWrapper);
+			}
+		};
+		
+		// Patch prepare_timeline_contents to filter for emails only
+		frm.timeline.prepare_timeline_contents = function() {
+			if (this.only_emails_switch) {
+				this.timeline_items = [];
+				this.timeline_items.push(...this.get_email_communication_timeline_contents());
+				return;
+			}
+			origPrepare();
+		};
+		
+		// Re-render timeline only if setup function exists and hasn't been called yet
+		setTimeout(() => {
+			if (frm.timeline && frm.timeline.timeline_wrapper.find('.show-emails-only-switch').length === 0) {
+				frm.timeline.setup_activity_toggle();
+			}
+		}, 500);
+	} else if (!frm.timeline) {
+		setTimeout(patchTimelineInstance, 200);
+	}
+}
+
+
+function  add_edit_delete_buttons_to_drafts(frm) {
+	if (!frm.timeline || !frm.timeline.doc_info || !frm.timeline.doc_info.communications) {
+		return;
+	}
+
+	// Find draft communications from doc_info
+	const draft_communications = frm.timeline.doc_info.communications.filter(comm => 
+		comm._doc_status === "Draft" || comm.delivery_status === "Draft"
+	);
+
+	draft_communications.forEach(comm => {
+		// Find the timeline item for this communication
+		const timeline_item = frm.timeline.wrapper.find(`.timeline-item[data-name="${comm.name}"]`);
+		
+		if (timeline_item.length > 0 && timeline_item.find('.btn-edit-draft').length === 0) {
+				let edit_draft_btn = $(`
+					<a class="action-btn btn-edit-draft" title="${__("Edit Draft")}">
+						${frappe.utils.icon("edit", "sm")}
+					</a>
+				`);
+
+			let delete_draft_btn = $(`
+				<a class="action-btn btn-delete-draft" title="${__("Delete Draft")}">
+					${frappe.utils.icon("delete", "sm")}
+				</a>
+			`);
+
+			// Try to find the actions area
+			let $actions = timeline_item.find(".actions");
+			if ($actions.length === 0) {
+				$actions = timeline_item.find(".timeline-actions");
+			}
+			if ($actions.length === 0) {
+				$actions = timeline_item.find(".timeline-message-box .actions");
+			}
+			
+			if ($actions.length > 0) {
+				$actions.prepend(edit_draft_btn);
+				$actions.prepend(delete_draft_btn);
+			} else {
+				// Fallback: add to the timeline item itself
+				timeline_item.prepend(edit_draft_btn);
+				timeline_item.prepend(delete_draft_btn);
 			}
 		}
-		patchTimelineInstance();
-		// --- End timeline patch logic ---
-	}
-}); 
+	});
+}
 
 // Function to initialize roleprofile-based features
 function initialize_roleprofile_based_features(frm) {

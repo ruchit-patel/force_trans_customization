@@ -8,32 +8,41 @@ def save_draft(**kwargs):
     """Save email as draft communication"""
     
     try:
-        # Check if draft already exists for this user and document
-        existing_draft = frappe.db.get_value(
-            "Communication",
-            {
-                "reference_doctype": kwargs.get("doctype"),
-                "reference_name": kwargs.get("docname"),
-                "status": "Draft",
-                "owner": frappe.session.user,
-                "communication_medium": "Email"
-            }
-        )
+        draft_name = kwargs.get("draft_name")
         
-        if existing_draft:
+        if draft_name:
             # Update existing draft
-            draft = frappe.get_doc("Communication", existing_draft)
+            draft = frappe.get_doc("Communication", draft_name)
+            # Validate permissions
+            if draft.owner != frappe.session.user:
+                frappe.throw(_("You can only edit your own drafts"))
         else:
-            # Create new draft
-            draft = frappe.new_doc("Communication")
-            draft.reference_doctype = kwargs.get("doctype")
-            draft.reference_name = kwargs.get("docname")
-            draft.status = "Draft"
-            draft.delivery_status = "Draft"
-            draft.communication_type = "Communication"
-            draft.communication_medium = "Email"
-            draft.sent_or_received = "Sent"
-            draft.communication_date = now_datetime()
+            # Check if draft already exists for this user and document
+            existing_draft = frappe.db.get_value(
+                "Communication",
+                {
+                    "reference_doctype": kwargs.get("doctype"),
+                    "reference_name": kwargs.get("docname"),
+                    "status": "Draft",
+                    "owner": frappe.session.user,
+                    "communication_medium": "Email"
+                }
+            )
+            
+            if existing_draft:
+                # Update existing draft
+                draft = frappe.get_doc("Communication", existing_draft)
+            else:
+                # Create new draft
+                draft = frappe.new_doc("Communication")
+                draft.reference_doctype = kwargs.get("doctype")
+                draft.reference_name = kwargs.get("docname")
+                draft.status = "Draft"
+                draft.delivery_status = "Draft"
+                draft.communication_type = "Communication"
+                draft.communication_medium = "Email"
+                draft.sent_or_received = "Sent"
+                draft.communication_date = now_datetime()
         
         # Update draft content
         draft.subject = kwargs.get("subject") or "Draft Email"
@@ -87,8 +96,6 @@ def get_drafts(doctype, docname):
         frappe.log_error(f"Error getting drafts: {str(e)}", "Email Draft Error")
         return []
 
-@frappe.whitelist()
-def send_draft(draft_name):
     """Send a draft communication"""
     
     try:
@@ -155,35 +162,3 @@ def delete_draft(draft_name):
             "success": False,
             "message": _("Error deleting draft: {0}").format(str(e))
         }
-
-@frappe.whitelist()
-def continue_editing_draft(draft_name):
-    """Get draft data for editing"""
-    
-    try:
-        draft = frappe.get_doc("Communication", draft_name)
-        
-        # Validate permissions
-        if draft.owner != frappe.session.user:
-            frappe.throw(_("You can only edit your own drafts"))
-        
-        return {
-            "success": True,
-            "draft": {
-                "name": draft.name,
-                "subject": draft.subject,
-                "content": draft.content,
-                "recipients": draft.recipients,
-                "cc": draft.cc,
-                "bcc": draft.bcc,
-                "sender": draft.sender,
-                "email_template": draft.email_template
-            }
-        }
-        
-    except Exception as e:
-        frappe.log_error(f"Error getting draft for editing: {str(e)}", "Email Draft Error")
-        return {
-            "success": False,
-            "message": _("Error loading draft: {0}").format(str(e))
-        } 
