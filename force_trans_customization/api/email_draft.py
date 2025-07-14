@@ -14,8 +14,8 @@ def save_draft(**kwargs):
             # Update existing draft
             draft = frappe.get_doc("Communication", draft_name)
             # Validate permissions
-            if draft.owner != frappe.session.user:
-                frappe.throw(_("You can only edit your own drafts"))
+            # if draft.owner != frappe.session.user:
+            #     frappe.throw(_("You can only edit your own drafts"))
         else:
             # Check if draft already exists for this user and document
             existing_draft = frappe.db.get_value(
@@ -96,38 +96,48 @@ def get_drafts(doctype, docname):
         frappe.log_error(f"Error getting drafts: {str(e)}", "Email Draft Error")
         return []
 
+@frappe.whitelist()
+def send_draft(draft_name, form_values=None, selected_attachments=None):
     """Send a draft communication"""
     
     try:
         draft = frappe.get_doc("Communication", draft_name)
         
-        # Validate permissions
-        if draft.owner != frappe.session.user:
-            frappe.throw(_("You can only send your own drafts"))
+        # # Validate permissions
+        # if draft.owner != frappe.session.user:
+        #     frappe.throw(_("You can only send your own drafts"))
         
-        # Change status from Draft to Linked
+        # Update the draft with latest form values if provided
+        if form_values:
+            # Parse form_values if it's a JSON string
+            if isinstance(form_values, str):
+                form_values = json.loads(form_values)
+            
+            draft.subject = form_values.get("subject") or draft.subject
+            draft.content = form_values.get("content") or draft.content
+            draft.recipients = form_values.get("recipients") or draft.recipients
+            draft.cc = form_values.get("cc") or draft.cc
+            draft.bcc = form_values.get("bcc") or draft.bcc
+            draft.sender = form_values.get("sender") or draft.sender
+            draft.email_template = form_values.get("email_template") or draft.email_template
+            
+            # Set text content for search
+            if draft.content:
+                draft.text_content = frappe.utils.strip_html_tags(draft.content)
+        
+        # Update status to Linked
         draft.status = "Linked"
+        draft.delivery_status = ""
         draft.save()
         
-        # Send the email using Frappe's email system
-        from frappe.core.doctype.communication.email import make
-        
-        result = make(
-            doctype=draft.reference_doctype,
-            name=draft.reference_name,
-            content=draft.content,
-            subject=draft.subject,
-            recipients=draft.recipients,
-            cc=draft.cc,
-            bcc=draft.bcc,
-            sender=draft.sender,
-            send_email=True
-        )
+        # Send the email using the existing draft document
+        # The send_email method will handle the delivery status properly
+        draft.send_email()
         
         return {
             "success": True,
             "message": _("Draft sent successfully"),
-            "communication_name": result.get("name")
+            "communication_name": draft.name
         }
         
     except Exception as e:
@@ -162,3 +172,4 @@ def delete_draft(draft_name):
             "success": False,
             "message": _("Error deleting draft: {0}").format(str(e))
         }
+

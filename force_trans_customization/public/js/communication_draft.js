@@ -88,6 +88,53 @@ force_trans_customization.communication_draft = {
             }
         };
 
+        // Override send_action to handle draft emails
+        const original_send_action = frappe.views.CommunicationComposer.prototype.send_action;
+        frappe.views.CommunicationComposer.prototype.send_action = function() {
+            // Check if this is editing a draft
+            if (this.draft_name) {
+                // This is editing a draft, so update the existing draft and send it
+                let form_values = this.dialog.get_values();
+                if (!form_values) return;
+
+                const selected_attachments = $.map(
+                    $(this.dialog.wrapper).find("[data-file-name]:checked"),
+                    function (element) {
+                        return $(element).attr("data-file-name");
+                    }
+                );
+
+                // Call our server-side send draft method
+                frappe.call({
+                    method: "force_trans_customization.api.email_draft.send_draft",
+                    args: {
+                        draft_name: this.draft_name,
+                        form_values: form_values,
+                        selected_attachments: selected_attachments
+                    },
+                    callback: (r) => {
+                        if (r.message && r.message.success) {
+                            frappe.show_alert(__("Draft sent successfully"), 3);
+                            this.dialog.hide();
+                            // Refresh timeline
+                            if (this.frm && this.frm.timeline) {
+                                this.frm.timeline.refresh();
+                            }
+                        } else {
+                            frappe.msgprint({
+                                title: __("Error"),
+                                message: r.message ? r.message.message : __("Error sending draft"),
+                                indicator: "red"
+                            });
+                        }
+                    }
+                });
+            } else {
+                // This is a new email, use the original send action
+                original_send_action.call(this);
+            }
+        };
+
     },
 
     delete_draft(draft_name) {
