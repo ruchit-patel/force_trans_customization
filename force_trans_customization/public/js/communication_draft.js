@@ -73,6 +73,10 @@ force_trans_customization.communication_draft = {
                             if (this.frm && this.frm.timeline) {
                                 this.frm.timeline.refresh();
                             }
+                            // Close the email composer dialog
+                            if (this.dialog) {
+                                this.dialog.hide();
+                            }
                         } else {
                             frappe.msgprint({
                                 title: __("Error"),
@@ -88,9 +92,46 @@ force_trans_customization.communication_draft = {
             }
         };
 
-        // Override send_action to handle draft emails
+        // Override send_action to handle draft emails and add 30-second delay
         const original_send_action = frappe.views.CommunicationComposer.prototype.send_action;
-        frappe.views.CommunicationComposer.prototype.send_action = function() {
+        frappe.views.CommunicationComposer.prototype.send_action = async function() {
+            // Add 30-second delay to send_after if not specified (for both draft and non-draft)
+            let form_values = this.dialog.get_values();
+            console.log("=== DEBUG: Communication Draft Send Action ===");
+            console.log("Form values:", form_values);
+            
+            // Check if send_after is already set by user
+            const currentSendAfter = form_values ? form_values.send_after : null;
+            console.log("Current send_after value:", currentSendAfter);
+            console.log("send_after field exists:", 'send_after' in (form_values || {}));
+            
+            let isDelayedSending = false;
+            let communicationName = null;
+            
+            if (!currentSendAfter) {
+                console.log("send_after is empty, applying 30-second delay");
+                // Calculate 30 seconds from now in Frappe's configured timezone
+                const now = new Date();
+                const sendAfter = new Date(now.getTime() + 30 * 1000);
+                
+                // Convert to Frappe's timezone and format properly
+                const sendAfterInTimezone = frappe.datetime.convert_to_user_tz(sendAfter);
+                const formattedDateTime = frappe.datetime.get_datetime_as_string(sendAfterInTimezone);
+                
+                console.log("Setting send_after to:", formattedDateTime);
+                
+                // Set the send_after value in the dialog
+                await this.dialog.set_value('send_after', formattedDateTime);
+                
+                // Debug: Check if the value was set
+                const afterSetValue = this.dialog.get_value('send_after');
+                console.log("After setting send_after, get_value returns:", afterSetValue);
+                
+                isDelayedSending = true;
+            } else {
+                console.log("send_after is already set, not applying delay");
+            }
+            
             // Check if this is editing a draft
             if (this.draft_name) {
                 // This is editing a draft, so update the existing draft and send it
@@ -112,9 +153,17 @@ force_trans_customization.communication_draft = {
                         form_values: form_values,
                         selected_attachments: selected_attachments
                     },
-                    callback: (r) => {
+                    callback: function(r) {
                         if (r.message && r.message.success) {
-                            frappe.show_alert(__("Draft sent successfully"), 3);
+                            communicationName = r.message.communication_name;
+                            
+                            if (isDelayedSending) {
+                                // Show toast with undo button for delayed sending
+                                this.show_undo_toast(communicationName);
+                            } else {
+                                frappe.show_alert(__("Draft sent successfully"), 3);
+                            }
+                            
                             this.dialog.hide();
                             // Refresh timeline
                             if (this.frm && this.frm.timeline) {
@@ -127,12 +176,85 @@ force_trans_customization.communication_draft = {
                                 indicator: "red"
                             });
                         }
-                    }
+                    }.bind(this)
                 });
             } else {
-                // This is a new email, use the original send action
+                // This is a new email, use the original send action but intercept the result
+                const originalSendAction = original_send_action.bind(this);
+                
+                // Override the original send action to capture the communication name
                 original_send_action.call(this);
+                
+                // If delayed sending is enabled, we need to find the communication that was just created
+                if (isDelayedSending) {
+                    // Wait a bit for the communication to be created, then find it
+                    setTimeout(function() {
+                        this.find_recent_communication_and_show_undo();
+                    }.bind(this), 1000);
+                }
             }
+        };
+
+        // Add method to show undo toast
+        frappe.views.CommunicationComposer.prototype.show_undo_toast = function(communicationName) {
+            if (!communicationName) return;
+            
+            const toast = frappe.show_alert({
+                message: __("Email will be sent in 30 seconds. ") + 
+                    ` <a class="text-small text-muted undo-email-btn" href="#" data-communication="${communicationName}" style="font-weight: bold; text-decoration: underline;">${__("Undo")}</a>`,
+                indicator: "yellow"
+            }, 30);
+            
+            // Add click handler for undo button
+            toast.find('.undo-email-btn').on('click', function() {
+                const commName = this.draft_name || communicationName;
+                frappe.call({
+                    method: "force_trans_customization.api.email_draft.undo_scheduled_email",
+                    args: {
+                        communication_name: commName
+                    },
+                    callback: function(r) {
+                        if (r.message && r.message.success) {
+                            frappe.show_alert(__("Email sending cancelled"), 3);
+                            // Refresh timeline
+                            if (this.frm && this.frm.timeline) {
+                                this.frm.timeline.refresh();
+                            }
+                        } else {
+                            frappe.msgprint({
+                                title: __("Error"),
+                                message: r.message ? r.message.message : __("Error cancelling email"),
+                                indicator: "red"
+                            });
+                        }
+                    }.bind(this)
+                });
+                
+                // Remove the toast
+                toast.remove();
+            }.bind(this));
+        };
+
+        // Add method to find recent communication and show undo
+        frappe.views.CommunicationComposer.prototype.find_recent_communication_and_show_undo = function() {
+            // Use our custom server-side method to get the most recent communication
+            frappe.call({
+                method: "force_trans_customization.api.email_draft.get_recent_communication",
+                args: {
+                    doctype: this.frm.doctype,
+                    docname: this.frm.docname,
+                    minutes: 1
+                },
+                callback: function(r) {
+                    console.log("Recent communication result:", r.message);
+                    if (r.message && r.message.name) {
+                        console.log("Using communication:", r.message.name, "created at:", r.message.creation);
+                        this.show_undo_toast(r.message.name);
+                    } else {
+                        console.log("No recent communications found for undo");
+                    }
+                }.bind(this)
+            });
         };
 
     },
@@ -140,13 +262,13 @@ force_trans_customization.communication_draft = {
     delete_draft(draft_name) {
         frappe.confirm(
             __("Are you sure you want to delete this draft?"),
-            () => {
+            function() {
                 frappe.call({
                     method: "force_trans_customization.api.email_draft.delete_draft",
                     args: {
                         draft_name: draft_name
                     },
-                    callback: (r) => {
+                    callback: function(r) {
                         if (r.message && r.message.success) {
                             frappe.show_alert(__("Draft deleted"), 3);
                             // Refresh timeline

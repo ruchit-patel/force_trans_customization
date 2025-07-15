@@ -182,7 +182,13 @@ make_email_body_message = [
 # 		"force_trans_customization.tasks.monthly"
 # 	],
 # }
-
+scheduler_events = {
+    "cron": {
+        "* * * * *": [
+            "force_trans_customization.tasks.process_email_queue_frequent"
+        ]
+    }
+}
 # Testing
 # -------
 
