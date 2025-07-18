@@ -884,61 +884,29 @@ def get_default_company(email_account=None):
 def get_user_group_by_recipient_email(to_emails):
     """
     Map recipient email addresses to user groups for auto-assignment
+    Uses the custom_associated_email field from User Group doctype
     """
     try:
         if not to_emails:
             return None
         
-        # Define email to user group mapping
-        # You can extend this mapping or make it configurable via Custom Settings
-        email_to_group_mapping = {
-            "csm1@frapping.com": "CSM Team 1",
-            "csm2@frapping.com": "CSM Team 2", 
-            "csm3@frapping.com": "CSM Team 3",
-            "support@frapping.com": "General Support",
-            "tech@frapping.com": "Technical Support",
-            "billing@frapping.com": "Billing Team",
-            "sales@frapping.com": "Sales Team"
-        }
-        
-        # Check each recipient email against the mapping
-        for email in to_emails:
-            email = email.strip().lower()
-            if email in email_to_group_mapping:
-                user_group_name = email_to_group_mapping[email]
-                
-                # Verify the user group exists in the system
-                if frappe.db.exists("User Group", user_group_name):
-                    frappe.log_error(
-                        message=f"Auto-assigned issue to user group: {user_group_name} based on recipient email: {email}",
-                        title="User Group Auto-Assignment"
-                    )
-                    return user_group_name
-                else:
-                    frappe.log_error(
-                        message=f"User group '{user_group_name}' not found in system for email: {email}",
-                        title="User Group Assignment Warning"
-                    )
-        
-        # If no direct match, try pattern matching
+        # Check each recipient email against user groups with associated emails
         for email in to_emails:
             email = email.strip().lower()
             
-            # Pattern matching for CSM teams (csm1, csm2, etc.)
-            if email.startswith("csm") and "@frapping.com" in email:
-                # Extract number from email like csm1@frapping.com
-                csm_match = re.match(r"csm(\d+)@", email)
-                if csm_match:
-                    team_number = csm_match.group(1)
-                    user_group_name = f"CSM Team {team_number}"
-                    
-                    # Check if the dynamically generated user group exists
-                    if frappe.db.exists("User Group", user_group_name):
-                        frappe.log_error(
-                            message=f"Auto-assigned issue to user group: {user_group_name} based on pattern matching for email: {email}",
-                            title="User Group Pattern Assignment"
-                        )
-                        return user_group_name
+            # Find user group that has this email as associated_email
+            user_group = frappe.db.get_value(
+                "User Group",
+                {"custom_associated_email": email},
+                "name"
+            )
+            
+            if user_group:
+                frappe.log_error(
+                    message=f"Auto-assigned issue to user group: {user_group} based on associated email: {email}",
+                    title="User Group Auto-Assignment"
+                )
+                return user_group
         
         return None
         
