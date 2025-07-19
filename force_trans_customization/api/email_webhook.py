@@ -458,7 +458,7 @@ def process_email_attachments(communication, attachments):
                     "file_name": filename
                 })
                 
-                frappe.log_error(
+                frappe.log(
                     message=f"Successfully processed attachment: {filename} for communication: {communication.name}",
                     title="Attachment Processed"
                 )
@@ -704,7 +704,7 @@ def create_support_issue_from_communication(communication, sender_email, sender_
         # Commit the transaction
         frappe.db.commit()
         
-        frappe.log_error(
+        frappe.log(
             message=f"Successfully created support issue {issue.name} from communication {communication.name}",
             title="Support Issue Created"
         )
@@ -763,7 +763,7 @@ def link_communication_to_issue(communication, issue_name):
         
         communication.save(ignore_permissions=True)
         
-        frappe.log_error(
+        frappe.log(
             message=f"Linked communication {communication.name} to issue {issue_name}",
             title="Communication Linked"
         )
@@ -902,7 +902,7 @@ def get_user_group_by_recipient_email(to_emails):
             )
             
             if user_group:
-                frappe.log_error(
+                frappe.log(
                     message=f"Auto-assigned issue to user group: {user_group} based on associated email: {email}",
                     title="User Group Auto-Assignment"
                 )
@@ -970,7 +970,7 @@ def update_issue_status_on_customer_reply(issue_name):
             "comment_by": "Administrator" if frappe.flags.in_test else frappe.session.user
         }).insert(ignore_permissions=True)
 
-        frappe.log_error(
+        frappe.log(
             message=f"Issue {issue_name} status updated to '{new_status}' after customer reply.",
             title="Issue Status Auto-Update"
         )

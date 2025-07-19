@@ -6,13 +6,9 @@ def modify_email_headers(email_obj):
     This is called by the 'make_email_body_message' hook
     """
     try:
-        # Get the email account used for sending
-        email_account = email_obj.email_account
-        if email_account and email_account.email_id:
-            # Set Reply-To to team email
-            team_email = email_account.email_id
-            email_obj.set_header("Reply-To", team_email)
-            frappe.log(f"Set Reply-To to team email: {team_email}")
+        # Set Reply-To to as blank
+        email_obj.set_header("Reply-To", '')
+        frappe.log(f"Set Reply-To to team email: blank")
     except Exception as e:
         frappe.log_error(
             message=f"Error modifying email headers: {str(e)}",
