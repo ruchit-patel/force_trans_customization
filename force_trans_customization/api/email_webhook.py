@@ -876,25 +876,34 @@ def get_user_group_by_recipient_email(to_emails):
     """
     Map recipient email addresses to user groups for auto-assignment
     Uses the custom_associated_email field from User Group doctype
+    Now supports multiple comma-separated emails in the associated_email field
     """
     try:
         if not to_emails:
             return None
         
+        # Get all user groups with associated emails
+        user_groups_with_emails = frappe.db.get_list(
+            "User Group",
+            filters={"custom_associated_email": ["!=", ""]},
+            fields=["name", "custom_associated_email"]
+        )
+        
         # Check each recipient email against user groups with associated emails
         for email in to_emails:
             email = email.strip().lower()
             
-            # Find user group that has this email as associated_email
-            user_group = frappe.db.get_value(
-                "User Group",
-                {"custom_associated_email": email},
-                "name"
-            )
-            
-            if user_group:
-                frappe.log(f"Auto-assigned issue to user group: {user_group} based on associated email: {email}")
-                return user_group
+            # Check each user group's associated emails
+            for user_group in user_groups_with_emails:
+                if not user_group.custom_associated_email:
+                    continue
+                
+                # Split the associated emails by comma and check each one
+                associated_emails = [e.strip().lower() for e in user_group.custom_associated_email.split(',')]
+                
+                if email in associated_emails:
+                    frappe.log(f"Auto-assigned issue to user group: {user_group.name} based on associated email: {email}")
+                    return user_group.name
         
         return None
         

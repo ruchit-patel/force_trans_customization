@@ -15,7 +15,10 @@ has_permission = {
  "Issue": "force_trans_customization.permissions.issue_has_permission",
 }
 
-doctype_js = {"Issue" : "custom/issue_form.js"}
+doctype_js = {
+    "Issue" : "custom/issue_form.js",
+    "User Group" : "public/js/user_group.js"
+}
 doctype_list_js = {"Issue" : "custom/issue_list.js"}
 # required_apps = []
 
