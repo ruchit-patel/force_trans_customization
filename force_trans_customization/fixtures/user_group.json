@@ -1,8 +1,9 @@
 [
  {
+  "custom_associated_email": "sales@force-trans.com",
   "docstatus": 0,
   "doctype": "User Group",
-  "modified": "2025-06-30 06:55:35.714556",
+  "modified": "2025-07-18 04:44:24.363057",
   "name": "CSM Team 1",
   "user_group_members": [
    {
@@ -14,9 +15,10 @@
   ]
  },
  {
+  "custom_associated_email": "sales@force-trans.com",
   "docstatus": 0,
   "doctype": "User Group",
-  "modified": "2025-06-30 06:55:45.994276",
+  "modified": "2025-07-19 03:44:37.862585",
   "name": "CSM Team 2",
   "user_group_members": [
    {
@@ -28,9 +30,10 @@
   ]
  },
  {
+  "custom_associated_email": "sales@force-trans.com",
   "docstatus": 0,
   "doctype": "User Group",
-  "modified": "2025-06-30 06:55:53.431164",
+  "modified": "2025-07-19 03:44:31.803466",
   "name": "CSM Team 3",
   "user_group_members": [
    {
@@ -42,9 +45,10 @@
   ]
  },
  {
+  "custom_associated_email": "marketing@force-trans.com, sales@force-trans.com",
   "docstatus": 0,
   "doctype": "User Group",
-  "modified": "2025-06-30 06:56:02.473382",
+  "modified": "2025-07-19 04:13:23.431286",
   "name": "CSM Team 4",
   "user_group_members": [
    {
@@ -56,9 +60,10 @@
   ]
  },
  {
+  "custom_associated_email": "sales@force-trans.com",
   "docstatus": 0,
   "doctype": "User Group",
-  "modified": "2025-06-30 06:56:14.659611",
+  "modified": "2025-07-19 03:44:21.437633",
   "name": "CSM Team 5",
   "user_group_members": [
    {
