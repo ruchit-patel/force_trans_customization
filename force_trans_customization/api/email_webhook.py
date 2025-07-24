@@ -295,6 +295,41 @@ def find_matching_email_account(primary_recipient, all_recipients):
     return email_account
 
 
+def clean_email_content(content):
+    """
+    Clean up email content by removing excessive newlines and spacing
+    """
+    if not content:
+        return content
+    
+    # Remove excessive newlines and spacing
+    import re
+    
+    # Replace multiple newlines with single newline
+    content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+    
+    # Replace multiple spaces with single space
+    content = re.sub(r' +', ' ', content)
+    
+    # Remove leading/trailing whitespace from each line
+    lines = content.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip()
+        if line:  # Only add non-empty lines
+            cleaned_lines.append(line)
+        elif cleaned_lines and cleaned_lines[-1]:  # Add single empty line between content
+            cleaned_lines.append('')
+    
+    # Join lines back together
+    content = '\n'.join(cleaned_lines)
+    
+    # Remove leading/trailing whitespace
+    content = content.strip()
+    
+    return content
+
+
 def create_communication_record(message_id, timestamp, from_email, to_emails, 
                               subject, body_text, body_html, headers, email_account):
     """
@@ -316,13 +351,17 @@ def create_communication_record(message_id, timestamp, from_email, to_emails,
     # Set recipients
     communication.recipients = ", ".join(to_emails)
     
-    # Set content - prefer HTML over text
+    # Set content - prefer HTML over text, with cleanup
     if body_html and body_html.strip():
         communication.content = body_html
-        communication.text_content = strip_html_tags(body_html)
+        # Clean up text content from HTML
+        text_content = strip_html_tags(body_html)
+        communication.text_content = clean_email_content(text_content)
     else:
-        communication.content = body_text.replace("\n", "<br>") if body_text else ""
-        communication.text_content = body_text or ""
+        # Clean up plain text content
+        cleaned_text = clean_email_content(body_text) if body_text else ""
+        communication.content = cleaned_text.replace("\n", "<br>") if cleaned_text else ""
+        communication.text_content = cleaned_text or ""
     
     # Set timestamps
     if timestamp:
