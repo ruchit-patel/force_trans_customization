@@ -195,6 +195,104 @@ force_trans_customization.communication_draft = {
             }
         };
 
+        // Override the get_earlier_reply function to format quoted content properly
+        const original_get_earlier_reply = frappe.views.CommunicationComposer.prototype.get_earlier_reply;
+        frappe.views.CommunicationComposer.prototype.get_earlier_reply = function() {
+            this.reply_set = false;
+
+            const last_email = this.last_email || (this.frm && this.frm.timeline.get_last_email(true));
+
+            if (!last_email) return "";
+            let last_email_content = last_email.original_comment || last_email.content;
+
+            // Clean up the HTML content properly
+            last_email_content = this.clean_html_content(last_email_content);
+
+            // clip last email for a maximum of 20k characters
+            // to prevent the email content from getting too large
+            if (last_email_content.length > 20 * 1024) {
+                last_email_content += "<div>" + __("Message clipped") + "</div>" + last_email_content;
+                last_email_content = last_email_content.slice(0, 20 * 1024);
+            }
+
+            const communication_date = frappe.datetime.global_date_format(
+                last_email.communication_date || last_email.creation
+            );
+
+            this.reply_set = true;
+
+            return `
+                <div><br></div>
+                <div class="gmail_quote">
+                    <div class="gmail_attr">
+                        ${__("On {0}, {1} wrote:", [communication_date, last_email.sender])}
+                    </div>
+                    <blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex;">
+                        ${last_email_content}
+                    </blockquote>
+                </div>
+            `;
+        };
+
+        // New function to clean HTML content
+        frappe.views.CommunicationComposer.prototype.clean_html_content = function(html) {
+            if (!html) return "";
+            
+            // Create a temporary div to parse HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            
+            // Remove excessive empty paragraphs and divs
+            const emptyElements = tempDiv.querySelectorAll('p:empty, div:empty, br + br');
+            emptyElements.forEach(el => {
+                if (el.tagName === 'BR') {
+                    // Only remove if there are multiple consecutive BRs
+                    if (el.nextElementSibling && el.nextElementSibling.tagName === 'BR') {
+                        el.remove();
+                    }
+                } else {
+                    el.remove();
+                }
+            });
+            
+            // Clean up nested blockquotes to prevent excessive indentation
+            const blockquotes = tempDiv.querySelectorAll('blockquote');
+            blockquotes.forEach(blockquote => {
+                // Remove excessive padding/margin from nested blockquotes
+                const nestedBlockquotes = blockquote.querySelectorAll('blockquote');
+                nestedBlockquotes.forEach(nested => {
+                    nested.style.marginLeft = '0.8ex';
+                    nested.style.paddingLeft = '1ex';
+                });
+            });
+            
+            // Clean up excessive spacing between elements
+            const allElements = tempDiv.querySelectorAll('*');
+            allElements.forEach(el => {
+                if (el.innerHTML && el.innerHTML.includes('&nbsp;')) {
+                    el.innerHTML = el.innerHTML.replace(/(&nbsp;\s*){3,}/g, '&nbsp;');
+                }
+            });
+            
+            return tempDiv.innerHTML;
+        };
+
+        frappe.views.CommunicationComposer.prototype.html2text = function(html) {
+            // convert HTML to text and try and preserve whitespace
+            html = html
+                .replace(/<\/div>/g, "<br></div>") // replace end of blocks
+                .replace(/<\/p>/g, "<br></p>") // replace end of paragraphs
+                .replace(/<br>/g, "\n");
+
+            const text = frappe.utils.html2text(html);
+            
+            // Clean up excessive newlines and spacing
+            return text
+                .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
+                .replace(/ +/g, " ") // Replace multiple spaces with single space
+                .replace(/^\s+|\s+$/gm, ""); // Remove leading/trailing whitespace from each line
+        };
+        
         // Add method to show undo toast
         frappe.views.CommunicationComposer.prototype.show_undo_toast = function(communicationName) {
             if (!communicationName) return;
