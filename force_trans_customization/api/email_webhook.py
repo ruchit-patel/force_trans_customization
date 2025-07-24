@@ -370,11 +370,21 @@ def create_communication_record(message_id, timestamp, from_email, to_emails,
 def parse_email_date(date_string):
     """
     Parse email date header to Frappe datetime format
+    Convert to system timezone
     """
     try:
         from email.utils import parsedate_to_datetime
+        from frappe.utils import get_system_timezone
+        import pytz
+        
+        # Parse the email date (this returns a timezone-aware datetime)
         dt = parsedate_to_datetime(date_string)
-        return dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Convert to system timezone
+        system_tz = pytz.timezone(get_system_timezone())
+        dt_system = dt.astimezone(system_tz)
+        
+        return dt_system.strftime('%Y-%m-%d %H:%M:%S')
     except Exception as e:
         frappe.log_error(f"Error parsing email date {date_string}: {str(e)}")
         return now_datetime()
@@ -383,8 +393,11 @@ def parse_email_date(date_string):
 def parse_iso_datetime(iso_string):
     """
     Parse ISO 8601 datetime string to Frappe datetime format
+    Convert to system timezone
     """
     from datetime import datetime
+    from frappe.utils import get_system_timezone
+    import pytz
     
     try:
         # Remove 'Z' and handle microseconds
@@ -400,12 +413,20 @@ def parse_iso_datetime(iso_string):
             if '.' in iso_string:
                 # With microseconds
                 dt = datetime.strptime(iso_string, '%Y-%m-%dT%H:%M:%S.%f')
+                # Make it timezone-aware (UTC)
+                dt = dt.replace(tzinfo=pytz.UTC)
             else:
                 # Without microseconds
                 dt = datetime.strptime(iso_string, '%Y-%m-%dT%H:%M:%S')
+                # Make it timezone-aware (UTC)
+                dt = dt.replace(tzinfo=pytz.UTC)
+        
+        # Convert to system timezone
+        system_tz = pytz.timezone(get_system_timezone())
+        dt_system = dt.astimezone(system_tz)
         
         # Convert to Frappe's expected format
-        return dt.strftime('%Y-%m-%d %H:%M:%S')
+        return dt_system.strftime('%Y-%m-%d %H:%M:%S')
         
     except Exception as e:
         frappe.log_error(f"Error parsing datetime {iso_string}: {str(e)}")
