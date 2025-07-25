@@ -82,6 +82,13 @@ function patchTimelineInstance(frm) {
 		const origSetup = frm.timeline.setup_activity_toggle.bind(frm.timeline);
 		const origPrepare = frm.timeline.prepare_timeline_contents.bind(frm.timeline);
 		
+		// Load saved preference from localStorage
+		const localStorageKey = 'force_trans_show_only_emails';
+		const savedPreference = localStorage.getItem(localStorageKey);
+		if (savedPreference !== null) {
+			frm.timeline.only_emails_switch = savedPreference === 'true';
+		}
+		
 		// Patch setup_activity_toggle to add our switch
 		frm.timeline.setup_activity_toggle = function() {
 			//origSetup();
@@ -98,7 +105,7 @@ function patchTimelineInstance(frm) {
 			const $activityTitle = this.timeline_wrapper.find(".timeline-item.activity-title").first();
 			if ($activityTitle.length === 0) return;
 			
-			// Create "Show Only Emails" switch
+			// Create "Show Only Emails" switch with saved state
 			const $switchWrapper = $(`
 				<div class="d-flex align-items-center show-emails-only-switch">
 					<span style="color: var(--text-light); margin:0px 6px;">Show Only Emails</span>
@@ -111,7 +118,11 @@ function patchTimelineInstance(frm) {
 			
 			$switchWrapper.find("input[type=checkbox]").on("change", function() {
 				me.only_emails_switch = this.checked;
+				// Save preference to localStorage
+				localStorage.setItem(localStorageKey, this.checked.toString());
 				me.render_timeline_items();
+				// Add buttons after timeline re-renders
+				setTimeout(() => add_edit_delete_buttons_to_drafts(frm), 200);
 			});
 			
 			// Insert before the "Show all activity" switch if it exists
@@ -129,6 +140,8 @@ function patchTimelineInstance(frm) {
 			if (this.only_emails_switch) {
 				this.timeline_items = [];
 				this.timeline_items.push(...this.get_email_communication_timeline_contents());
+				// After filtering, trigger button addition for drafts
+				setTimeout(() => add_edit_delete_buttons_to_drafts(frm), 100);
 				return;
 			}
 			origPrepare();
@@ -138,6 +151,10 @@ function patchTimelineInstance(frm) {
 		setTimeout(() => {
 			if (frm.timeline && frm.timeline.timeline_wrapper.find('.show-emails-only-switch').length === 0) {
 				frm.timeline.setup_activity_toggle();
+				// Apply saved filter state after setup
+				if (frm.timeline.only_emails_switch) {
+					frm.timeline.render_timeline_items();
+				}
 			}
 		}, 500);
 	} else if (!frm.timeline) {
@@ -157,15 +174,32 @@ function  add_edit_delete_buttons_to_drafts(frm) {
 	);
 
 	draft_communications.forEach(comm => {
-		// Find the timeline item for this communication
-		const timeline_item = frm.timeline.wrapper.find(`.timeline-item[data-name="${comm.name}"]`);
+		// Find the timeline item for this communication - try different selectors
+		let timeline_item = frm.timeline.wrapper.find(`.timeline-item[data-name="${comm.name}"]`);
+		
+		// If not found with data-name, try finding by communication ID
+		if (timeline_item.length === 0) {
+			timeline_item = frm.timeline.wrapper.find(`#communication-${comm.name}`);
+		}
+		
+		// If still not found, search all timeline items for this communication
+		if (timeline_item.length === 0) {
+			frm.timeline.wrapper.find('.timeline-item').each(function() {
+				const $item = $(this);
+				// Check if this timeline item contains reference to our communication
+				if ($item.attr('data-name') === comm.name || $item.attr('id') === `communication-${comm.name}`) {
+					timeline_item = $item;
+					return false; // break
+				}
+			});
+		}
 		
 		if (timeline_item.length > 0 && timeline_item.find('.btn-edit-draft').length === 0) {
-				let edit_draft_btn = $(`
-					<a class="action-btn btn-edit-draft" title="${__("Edit Draft")}">
-						${frappe.utils.icon("edit", "sm")}
-					</a>
-				`);
+			let edit_draft_btn = $(`
+				<a class="action-btn btn-edit-draft" title="${__("Edit Draft")}">
+					${frappe.utils.icon("edit", "sm")}
+				</a>
+			`);
 
 			let delete_draft_btn = $(`
 				<a class="action-btn btn-delete-draft" title="${__("Delete Draft")}">
@@ -173,7 +207,7 @@ function  add_edit_delete_buttons_to_drafts(frm) {
 				</a>
 			`);
 
-			// Try to find the actions area
+			// Try to find the actions area in various locations
 			let $actions = timeline_item.find(".actions");
 			if ($actions.length === 0) {
 				$actions = timeline_item.find(".timeline-actions");
@@ -181,14 +215,20 @@ function  add_edit_delete_buttons_to_drafts(frm) {
 			if ($actions.length === 0) {
 				$actions = timeline_item.find(".timeline-message-box .actions");
 			}
+			if ($actions.length === 0) {
+				$actions = timeline_item.find(".message-actions");
+			}
 			
 			if ($actions.length > 0) {
-				$actions.prepend(edit_draft_btn);
 				$actions.prepend(delete_draft_btn);
+				$actions.prepend(edit_draft_btn);
 			} else {
-				// Fallback: add to the timeline item itself
-				timeline_item.prepend(edit_draft_btn);
-				timeline_item.prepend(delete_draft_btn);
+				// Fallback: create actions area and add buttons
+				const actionsHtml = `<div class="message-actions" style="margin-top: 8px;"></div>`;
+				timeline_item.find('.timeline-message-box, .timeline-content').first().append(actionsHtml);
+				$actions = timeline_item.find('.message-actions');
+				$actions.append(edit_draft_btn);
+				$actions.append(delete_draft_btn);
 			}
 		}
 	});
