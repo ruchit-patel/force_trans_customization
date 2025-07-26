@@ -242,39 +242,96 @@ force_trans_customization.communication_draft = {
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
             
-            // Remove excessive empty paragraphs and divs
-            const emptyElements = tempDiv.querySelectorAll('p:empty, div:empty, br + br');
-            emptyElements.forEach(el => {
-                if (el.tagName === 'BR') {
-                    // Only remove if there are multiple consecutive BRs
-                    if (el.nextElementSibling && el.nextElementSibling.tagName === 'BR') {
+            // Remove table elements that cause unwanted formatting
+            const tablesToRemove = tempDiv.querySelectorAll('table, tbody, thead, tr, td, th');
+            tablesToRemove.forEach(el => {
+                // Replace table cells with their text content and line break
+                if (el.tagName === 'TD' || el.tagName === 'TH') {
+                    const textContent = el.textContent.trim();
+                    if (textContent) {
+                        el.outerHTML = textContent + '\n';
+                    } else {
                         el.remove();
                     }
                 } else {
+                    // For other table elements, just unwrap them
+                    while (el.firstChild) {
+                        el.parentNode.insertBefore(el.firstChild, el);
+                    }
                     el.remove();
                 }
             });
             
-            // Clean up nested blockquotes to prevent excessive indentation
-            const blockquotes = tempDiv.querySelectorAll('blockquote');
-            blockquotes.forEach(blockquote => {
-                // Remove excessive padding/margin from nested blockquotes
-                const nestedBlockquotes = blockquote.querySelectorAll('blockquote');
-                nestedBlockquotes.forEach(nested => {
-                    nested.style.marginLeft = '0.8ex';
-                    nested.style.paddingLeft = '1ex';
-                });
-            });
-            
-            // Clean up excessive spacing between elements
-            const allElements = tempDiv.querySelectorAll('*');
-            allElements.forEach(el => {
-                if (el.innerHTML && el.innerHTML.includes('&nbsp;')) {
-                    el.innerHTML = el.innerHTML.replace(/(&nbsp;\s*){3,}/g, '&nbsp;');
+            // Convert block elements to preserve line breaks
+            const blockElements = tempDiv.querySelectorAll('div, p, br');
+            blockElements.forEach(el => {
+                if (el.tagName === 'BR') {
+                    el.outerHTML = '\n';
+                } else if (el.tagName === 'DIV' || el.tagName === 'P') {
+                    // Add line break after block elements
+                    const textContent = el.textContent.trim();
+                    if (textContent) {
+                        el.outerHTML = textContent + '\n';
+                    } else {
+                        el.remove();
+                    }
                 }
             });
             
-            return tempDiv.innerHTML;
+            // Handle blockquotes specially to preserve structure
+            const blockquotes = tempDiv.querySelectorAll('blockquote');
+            blockquotes.forEach(blockquote => {
+                const textContent = blockquote.textContent.trim();
+                if (textContent) {
+                    blockquote.outerHTML = textContent + '\n';
+                } else {
+                    blockquote.remove();
+                }
+            });
+            
+            // Remove other complex elements that can cause formatting issues
+            const complexElements = tempDiv.querySelectorAll('iframe, object, embed, style, script');
+            complexElements.forEach(el => el.remove());
+            
+            // Get the text content and clean it up
+            let content = tempDiv.textContent || tempDiv.innerText || "";
+            
+            // Clean up excessive whitespace while preserving line breaks
+            content = content
+                .replace(/[ \t]+/g, ' ')        // Multiple spaces/tabs to single space
+                .replace(/\n{3,}/g, '\n\n')     // More than 2 line breaks to 2
+                .replace(/^\s+|\s+$/gm, '')     // Remove leading/trailing spaces from lines
+                .trim();                        // Remove leading/trailing whitespace
+            
+            // Ensure email headers (On [date]...) start on new lines
+            // First handle cases where there's text immediately before "On"
+            content = content.replace(/([a-zA-Z0-9!.\-\s])On\s+(\d{1,2}(st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|\w{3})\s+\d{4})/g, '$1\nOn $2');
+            
+            // Also handle Gmail-style email headers "On ... at ... wrote:"
+            content = content.replace(/([a-zA-Z0-9!.\-\s])On\s+([A-Z][a-z]{2},\s+[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s+(AM|PM))/g, '$1\nOn $2');
+            
+            // Ensure "Sent via" also starts on new line
+            content = content.replace(/([a-zA-Z0-9!.\-\s])(Sent via)/g, '$1\n$2');
+            
+            // Remove duplicate "Sent via ERPNext" signatures (keep only the first one)
+            const sentViaRegex = /Sent via\s*ERPNext/gi;
+            const matches = content.match(sentViaRegex);
+            if (matches && matches.length > 1) {
+                // Replace all occurrences except the first one
+                let count = 0;
+                content = content.replace(sentViaRegex, function(match) {
+                    count++;
+                    return count === 1 ? match : '';
+                });
+            }
+            
+            // Clean up any extra line breaks left by removing signatures
+            content = content.replace(/\n{3,}/g, '\n\n');
+            
+            // Convert back to HTML with proper line breaks
+            content = content.replace(/\n/g, '<br>');
+            
+            return content;
         };
 
         frappe.views.CommunicationComposer.prototype.html2text = function(html) {
