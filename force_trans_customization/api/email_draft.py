@@ -127,7 +127,13 @@ def send_draft(draft_name, form_values=None, selected_attachments=None):
         
         # Update status to Linked
         draft.status = "Linked"
-        draft.delivery_status = ""
+        
+        # Set delivery_status to Scheduled if send_after is set, otherwise clear it
+        if draft.send_after:
+            draft.delivery_status = "Scheduled"
+        else:
+            draft.delivery_status = ""
+        
         draft.save()
         
         # Send the email using the existing draft document
