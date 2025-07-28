@@ -129,6 +129,13 @@ function patchTimelineInstance(frm) {
 			const $showAllActivity = $activityTitle.find('.show-all-activity');
 			if ($showAllActivity.length > 0) {
 				$showAllActivity.before($switchWrapper);
+				
+				// Patch the "Show all activity" toggle to also re-add buttons
+				const $showAllActivityToggle = $showAllActivity.find('input[type=checkbox]');
+				$showAllActivityToggle.off('click.draft-buttons').on('click.draft-buttons', function() {
+					// Add buttons after the original toggle logic completes
+					setTimeout(() => add_edit_delete_buttons_to_drafts(frm), 200);
+				});
 			} else {
 				// Fallback: append to activity title	
 				$activityTitle.append($switchWrapper);
