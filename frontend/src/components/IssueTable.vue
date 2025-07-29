@@ -13,7 +13,7 @@
     </div>
 
     <!-- ListView -->
-    <ListView v-else :columns="columns" :rows="issues" row-key="name" :options="listOptions"
+    <ListView v-else :columns="columns" :rows="transformedIssues" row-key="name" :options="listOptions"
       @update:selections="handleSelections">
 
       <ListHeader>
@@ -25,22 +25,16 @@
       </ListHeader>
 
       <ListRows>
-        <ListRow v-for="issue in issues" :key="issue.name" :row="issue">
+        <ListRow v-for="issue in transformedIssues" :key="issue.name" :row="issue">
           <template #default="{ column, item }">
             <ListRowItem :item="item" :align="column.align">
               <template #prefix>
                 <!-- Avatar for assignee column -->
                 <Avatar v-if="column.key === 'raised_by'" :size="'sm'" :label="getInitials(issue.raised_by)"
                   class="mr-3" />
-                <!-- Status indicator dot -->
-                <div v-else-if="column.key === 'status'" class="h-3 w-3 rounded-full mr-2"
-                  :class="getStatusColor(issue.status)" />
-                <!-- Priority indicator dot -->
-                <div v-else-if="column.key === 'priority'" class="h-3 w-3 rounded-full mr-2"
-                  :class="getPriorityColor(issue.priority)" />
               </template>
 
-              <!-- Custom content for each column -->
+              <!-- Custom content for specific columns only -->
               <template #default>
                 <!-- Issue ID with link -->
                 <a v-if="column.key === 'name'" href="#"
@@ -57,14 +51,9 @@
                   </div>
                 </div>
 
-                <!-- Status badge -->
-                <StatusBadge v-else-if="column.key === 'status'" :status="item" />
-
-                <!-- Priority badge -->
-                <PriorityBadge v-else-if="column.key === 'priority'" :priority="item" />
-
-                <!-- Assignee name -->
-                <span v-else-if="column.key === 'raised_by'" class="text-sm font-medium text-gray-900">
+                <!-- Assignee email with truncation -->
+                <span v-else-if="column.key === 'raised_by'" class="text-sm font-medium text-gray-900 truncate block"
+                  :title="item || '-'">
                   {{ item || '-' }}
                 </span>
 
@@ -80,7 +69,24 @@
                   <span class="text-xs text-gray-400">{{ formatTime(item) }}</span>
                 </div>
 
-                <!-- Default fallback -->
+                <!-- Status badge -->
+                <span v-else-if="column.key === 'status'"
+                  :class="getStatusBadgeClass(issue.status?.label || issue.status || 'New')"
+                  class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
+                  {{ issue.status?.label || issue.status || 'New' }}
+                </span>
+
+                <!-- Priority badge -->
+                <div v-else-if="column.key === 'priority'" class="flex items-center gap-2">
+                  <div :class="getPriorityIndicatorClass(issue.priority?.label || issue.priority || 'Medium')"
+                    class="w-2 h-2 rounded-full"></div>
+                  <span :class="getPriorityBadgeClass(issue.priority?.label || issue.priority || 'Medium')"
+                    class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
+                    {{ issue.priority?.label || issue.priority || 'Medium' }}
+                  </span>
+                </div>
+
+                <!-- Default fallback for other columns -->
                 <span v-else>{{ item }}</span>
               </template>
             </ListRowItem>
@@ -111,7 +117,7 @@ import ListRowItem from 'frappe-ui/src/components/ListView/ListRowItem.vue'
 import ListRows from 'frappe-ui/src/components/ListView/ListRows.vue'
 import ListSelectBanner from 'frappe-ui/src/components/ListView/ListSelectBanner.vue'
 
-// Enhanced status badge component with improved color coding
+// Enhanced status badge component with custom status values
 const StatusBadge = {
   props: ['status'],
   template: `
@@ -119,18 +125,28 @@ const StatusBadge = {
   `,
   computed: {
     displayStatus() {
-      return this.status || 'Open'
+      return this.status || 'New'
     },
     statusTheme() {
-      const status = this.status || 'Open'
+      const status = this.status || 'New'
+      // Color mapping from issue_list.js to maintain consistency
       const statusThemes = {
-        'Open': 'blue',
-        'Replied': 'yellow', 
-        'On Hold': 'orange',
-        'Resolved': 'green',
-        'Closed': 'gray'
+        'New': 'blue',                      // 🔵 New issues - blue for fresh/attention needed
+        'In Review': 'orange',              // 🟠 Under review - orange for active progress  
+        'Waiting on Customer': 'yellow',    // 🟡 Customer action needed - yellow for pause/wait
+        'Confirmed': 'purple',              // 🟣 Confirmed and validated - purple for approval
+        'In Transit': 'blue',               // 🔷 Active transit - light-blue mapped to blue in Frappe UI
+        'In Transit Unmanaged': 'gray',     // ⚫ Unmanaged transit - grey for limited control
+        'Delivered': 'green',               // 🟢 Successfully delivered - green for success
+        'Closed': 'green',                  // 🟢 Fully completed - darkgreen mapped to green in Frappe UI
+
+        // Legacy Status Support (backward compatibility)
+        'Open': 'red',                      // 🔴 Legacy open state
+        'Replied': 'orange',                // 🟠 Legacy replied state  
+        'On Hold': 'yellow',                // 🟡 Legacy hold state
+        'Resolved': 'green'                 // 🟢 Legacy resolved state
       }
-      return statusThemes[status] || 'blue'
+      return statusThemes[status] || 'gray'
     }
   },
   components: { Badge }
@@ -185,7 +201,7 @@ const IssueTypeBadge = {
     issueTypeTheme() {
       const type = this.issueType
       if (!type) return 'gray'
-      
+
       // Color coding based on common issue types
       const typeThemes = {
         'Bug': 'red',
@@ -196,14 +212,14 @@ const IssueTypeBadge = {
         'Question': 'yellow',
         'Documentation': 'gray'
       }
-      
+
       // Check for partial matches if exact match not found
       for (const [key, theme] of Object.entries(typeThemes)) {
         if (type.toLowerCase().includes(key.toLowerCase())) {
           return theme
         }
       }
-      
+
       return 'gray' // Default theme
     }
   },
@@ -285,7 +301,52 @@ export default {
       })
     }
 
-    // ListView columns configuration
+    // Helper function to get status color
+    const getStatusBadgeColor = (status) => {
+      const statusColors = {
+        'New': 'blue',
+        'In Review': 'orange',
+        'Waiting on Customer': 'yellow',
+        'Confirmed': 'purple',
+        'In Transit': 'blue',
+        'In Transit Unmanaged': 'gray',
+        'Delivered': 'green',
+        'Closed': 'green',
+        'Open': 'red',
+        'Replied': 'orange',
+        'On Hold': 'yellow',
+        'Resolved': 'green'
+      }
+      return statusColors[status] || 'gray'
+    }
+
+    // Helper function to get priority color
+    const getPriorityBadgeColor = (priority) => {
+      const priorityColors = {
+        'Critical': 'red',
+        'High': 'red',
+        'Medium': 'yellow',
+        'Low': 'green'
+      }
+      return priorityColors[priority] || 'yellow'
+    }
+
+    // Transform issues data to include badge structure for ListView
+    const transformedIssues = computed(() => {
+      return props.issues.map(issue => ({
+        ...issue,
+        status: {
+          label: issue.status || 'New',
+          color: getStatusBadgeColor(issue.status)
+        },
+        priority: {
+          label: issue.priority || 'Medium',
+          color: getPriorityBadgeColor(issue.priority)
+        }
+      }))
+    })
+
+    // ListView columns configuration with badge support
     const columns = computed(() => [
       {
         label: 'Issue ID',
@@ -300,12 +361,12 @@ export default {
       {
         label: 'Status',
         key: 'status',
-        width: '100px'
+        width: '160px'
       },
       {
         label: 'Priority',
         key: 'priority',
-        width: '100px'
+        width: '130px'
       },
       {
         label: 'Assignee',
@@ -356,15 +417,25 @@ export default {
       // TODO: Navigate to issue detail or emit event
     }
 
-    // Get status color classes
+    // Get status color classes for indicator dots
     const getStatusColor = (status) => {
-      const statusValue = status || 'Open'
+      const statusValue = status || 'New'
+      // Color mapping from issue_list.js to maintain consistency
       return {
-        'bg-blue-500': statusValue === 'Open',
-        'bg-yellow-500': statusValue === 'Replied',
-        'bg-orange-500': statusValue === 'On Hold',
-        'bg-green-500': statusValue === 'Resolved',
-        'bg-gray-500': statusValue === 'Closed'
+        'bg-blue-500': statusValue === 'New',                      // 🔵 New issues - blue for fresh/attention needed
+        'bg-orange-500': statusValue === 'In Review',              // 🟠 Under review - orange for active progress  
+        'bg-yellow-500': statusValue === 'Waiting on Customer',    // 🟡 Customer action needed - yellow for pause/wait
+        'bg-purple-500': statusValue === 'Confirmed',              // 🟣 Confirmed and validated - purple for approval
+        'bg-blue-500': statusValue === 'In Transit',               // 🔷 Active transit - light-blue mapped to blue in Tailwind
+        'bg-gray-500': statusValue === 'In Transit Unmanaged',     // ⚫ Unmanaged transit - grey for limited control
+        'bg-green-500': statusValue === 'Delivered',               // 🟢 Successfully delivered - green for success
+        'bg-green-500': statusValue === 'Closed',                  // 🟢 Fully completed - darkgreen mapped to green in Tailwind
+
+        // Legacy Status Support (backward compatibility)
+        'bg-red-500': statusValue === 'Open',                      // 🔴 Legacy open state
+        'bg-orange-500': statusValue === 'Replied',                // 🟠 Legacy replied state  
+        'bg-yellow-500': statusValue === 'On Hold',                // 🟡 Legacy hold state
+        'bg-green-500': statusValue === 'Resolved'                 // 🟢 Legacy resolved state
       }
     }
 
@@ -378,13 +449,60 @@ export default {
       }
     }
 
+    // Get status badge CSS classes
+    const getStatusBadgeClass = (status) => {
+      const statusValue = status || 'New'
+      const statusClasses = {
+        'New': 'bg-blue-100 text-blue-800',
+        'In Review': 'bg-orange-100 text-orange-800',
+        'Waiting on Customer': 'bg-yellow-100 text-yellow-800',
+        'Confirmed': 'bg-purple-100 text-purple-800',
+        'In Transit': 'bg-blue-100 text-blue-800',
+        'In Transit Unmanaged': 'bg-gray-100 text-gray-800',
+        'Delivered': 'bg-green-100 text-green-800',
+        'Closed': 'bg-green-100 text-green-800',
+        'Open': 'bg-red-100 text-red-800',
+        'Replied': 'bg-orange-100 text-orange-800',
+        'On Hold': 'bg-yellow-100 text-yellow-800',
+        'Resolved': 'bg-green-100 text-green-800'
+      }
+      return statusClasses[statusValue] || 'bg-gray-100 text-gray-800'
+    }
+
+    // Get priority badge CSS classes
+    const getPriorityBadgeClass = (priority) => {
+      const priorityValue = priority || 'Medium'
+      const priorityClasses = {
+        'Critical': 'bg-red-100 text-red-800',
+        'High': 'bg-red-100 text-red-800',
+        'Medium': 'bg-yellow-100 text-yellow-800',
+        'Low': 'bg-green-100 text-green-800'
+      }
+      return priorityClasses[priorityValue] || 'bg-yellow-100 text-yellow-800'
+    }
+
+    // Get priority indicator dot CSS classes
+    const getPriorityIndicatorClass = (priority) => {
+      const priorityValue = priority || 'Medium'
+      return {
+        'bg-red-500': priorityValue === 'Critical',
+        'bg-red-400': priorityValue === 'High',
+        'bg-yellow-400': priorityValue === 'Medium',
+        'bg-green-400': priorityValue === 'Low'
+      }
+    }
+
     return {
       columns,
       listOptions,
+      transformedIssues,
       handleSelections,
       handleIssueClick,
       getStatusColor,
       getPriorityColor,
+      getStatusBadgeClass,
+      getPriorityBadgeClass,
+      getPriorityIndicatorClass,
       getInitials,
       formatIssueId,
       stripHtml,
