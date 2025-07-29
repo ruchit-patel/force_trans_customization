@@ -1,8 +1,8 @@
 import { createResource } from "frappe-ui"
 
-// Main resource for fetching Issue doctype data
+// Main resource for fetching Issue doctype data with child table support
 export const issuesResource = createResource({
-    url: "frappe.client.get_list",
+    url: "force_trans_customization.api.issues.get_issues_with_assignments",
     makeParams(params) {
         // Handle null/undefined params explicitly
         const safeParams = params || {}
@@ -12,21 +12,6 @@ export const issuesResource = createResource({
         const order_by = safeParams.order_by || "creation desc"
 
         return {
-            doctype: "Issue",
-            fields: [
-                "name",
-                "subject",
-                "status",
-                "priority",
-                "raised_by",
-                "customer",
-                "project",
-                "issue_type",
-                "creation",
-                "modified",
-                "owner",
-                "description"
-            ],
             limit_page_length,
             limit_start,
             filters,
@@ -50,13 +35,12 @@ export const issuesResource = createResource({
 
 // Resource for getting total count of issues (for pagination)
 export const issuesCountResource = createResource({
-    url: "frappe.client.get_count",
+    url: "force_trans_customization.api.issues.get_issues_count_with_filters",
     makeParams(params) {
         // Handle null/undefined params explicitly
         const safeParams = params || {}
         const filters = safeParams.filters || {}
         return {
-            doctype: "Issue",
             filters
         }
     },

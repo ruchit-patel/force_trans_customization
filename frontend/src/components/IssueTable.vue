@@ -57,6 +57,21 @@
                   {{ item || '-' }}
                 </span>
 
+                <!-- Assigned Users as pills with hover popup -->
+                <div v-else-if="column.key === 'custom_users_assigned'" class="flex flex-wrap gap-1">
+                  <template v-if="issue.custom_users_assigned && issue.custom_users_assigned.length > 0">
+                    <div v-for="user in issue.custom_users_assigned.filter(u => u.user_assigned)" :key="user.name || user"
+                      class="relative inline-block">
+                      <span
+                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 cursor-pointer hover:bg-blue-200 transition-colors"
+                        @mouseenter="showUserPopup($event, user)" @mouseleave="hideUserPopup">
+                        {{ getInitials(user.user_assigned) }}
+                      </span>
+                    </div>
+                  </template>
+                  <span v-else class="text-gray-400 text-sm">-</span>
+                </div>
+
                 <!-- Project -->
                 <span v-else-if="column.key === 'project'">{{ item || '-' }}</span>
 
@@ -104,11 +119,32 @@
       </ListSelectBanner>
 
     </ListView>
+
+    <!-- User Popup -->
+    <div v-if="showPopup && popupUser"
+      class="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-48" :style="{
+        left: popupPosition.x + 'px',
+        top: popupPosition.y + 'px',
+        transform: 'translateX(-50%) translateY(-100%)'
+      }">
+      <div class="text-sm">
+        <div class="font-semibold text-gray-900 mb-1">
+          {{ popupUser.user_assigned || 'Unknown User' }}
+        </div>
+        <div class="text-gray-600 flex items-center gap-1">
+          <span class="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+          {{ popupUser.team || 'No Team' }}
+        </div>
+        <div class="text-xs text-gray-500 mt-1">
+          Assigned: {{ formatDate(popupUser.assigned_date) }}
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { ListView, Avatar, Badge, Button, FeatherIcon } from 'frappe-ui'
 import ListHeader from 'frappe-ui/src/components/ListView/ListHeader.vue'
 import ListHeaderItem from 'frappe-ui/src/components/ListView/ListHeaderItem.vue'
@@ -263,10 +299,37 @@ export default {
   },
   emits: ['sort'],
   setup(props, { emit }) {
+    // Popup state management
+    const showPopup = ref(false)
+    const popupUser = ref(null)
+    const popupPosition = ref({ x: 0, y: 0 })
+
     // Helper methods
     const getInitials = (name) => {
-      if (!name) return '?'
-      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+      if (!name || typeof name !== 'string') {
+        return '?'
+      }
+
+      // If it's an email address, extract the part before @
+      if (name.includes('@')) {
+        const emailPart = name.split('@')[0]
+        
+        // If email part has dots or underscores, use those as separators
+        if (emailPart.includes('.') || emailPart.includes('_')) {
+          const parts = emailPart.split(/[._]/)
+          return parts.map(part => part[0]).join('').toUpperCase().slice(0, 2)
+        }
+        // Otherwise, take first 2 characters of email part
+        return emailPart.slice(0, 2).toUpperCase()
+      }
+
+      // For regular names with spaces
+      if (name.includes(' ')) {
+        return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+      }
+
+      // For single words, take first 2 characters
+      return name.slice(0, 2).toUpperCase()
     }
 
     // Format issue ID to show only year and serial number
@@ -372,6 +435,11 @@ export default {
         label: 'Assignee',
         key: 'raised_by',
         width: '150px'
+      },
+      {
+        label: 'Assigned Users',
+        key: 'custom_users_assigned',
+        width: '180px'
       },
       {
         label: 'Project',
@@ -492,6 +560,22 @@ export default {
       }
     }
 
+    // Popup functions for user hover
+    const showUserPopup = (event, user) => {
+      const rect = event.target.getBoundingClientRect()
+      popupPosition.value = {
+        x: rect.left + rect.width / 2,
+        y: rect.top - 10
+      }
+      popupUser.value = user
+      showPopup.value = true
+    }
+
+    const hideUserPopup = () => {
+      showPopup.value = false
+      popupUser.value = null
+    }
+
     return {
       columns,
       listOptions,
@@ -507,7 +591,12 @@ export default {
       formatIssueId,
       stripHtml,
       formatDate,
-      formatTime
+      formatTime,
+      showPopup,
+      popupUser,
+      popupPosition,
+      showUserPopup,
+      hideUserPopup
     }
   }
 }
