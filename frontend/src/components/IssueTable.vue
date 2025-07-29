@@ -21,6 +21,21 @@
           <template v-if="column.icon" #prefix="{ item }">
             <FeatherIcon :name="item.icon" class="h-4 w-4" />
           </template>
+          
+          <!-- Sort indicator for sortable columns -->
+          <template v-if="column.sortable" #suffix>
+            <button 
+              @click="handleColumnSort(column.key)"
+              class="ml-2 p-1 rounded hover:bg-gray-100 transition-colors"
+              :class="getSortButtonClass(column.key)"
+            >
+              <FeatherIcon 
+                :name="getSortIcon(column.key)" 
+                class="h-3 w-3"
+                :class="getSortIconClass(column.key)"
+              />
+            </button>
+          </template>
         </ListHeaderItem>
       </ListHeader>
 
@@ -409,52 +424,61 @@ export default {
       }))
     })
 
-    // ListView columns configuration with badge support
+    // ListView columns configuration with sortable support
     const columns = computed(() => [
       {
         label: 'Issue ID',
         key: 'name',
-        width: '110px'
+        width: '110px',
+        sortable: true
       },
       {
         label: 'Title',
         key: 'subject',
-        width: 4
+        width: 4,
+        sortable: true
       },
       {
         label: 'Status',
         key: 'status',
-        width: '160px'
+        width: '160px',
+        sortable: true
       },
       {
         label: 'Priority',
         key: 'priority',
-        width: '130px'
+        width: '130px',
+        sortable: true
       },
       {
         label: 'Assignee',
         key: 'raised_by',
-        width: '150px'
+        width: '150px',
+        sortable: true
       },
       {
         label: 'Assigned Users',
         key: 'custom_users_assigned',
-        width: '180px'
+        width: '180px',
+        sortable: false
       },
       {
         label: 'Project',
         key: 'project',
-        width: '120px'
+        width: '120px',
+        sortable: true
       },
       {
         label: 'Tags',
         key: 'issue_type',
-        width: '100px'
+        width: '100px',
+        sortable: false
       },
       {
         label: 'Created At',
         key: 'creation',
-        width: '120px'
+        width: '120px',
+        sortable: true
       }
     ])
 
@@ -576,6 +600,43 @@ export default {
       popupUser.value = null
     }
 
+    // Sorting functionality
+    const handleColumnSort = (field) => {
+      let newDirection = 'asc'
+      
+      // If clicking the same field, toggle direction
+      if (props.sortField === field) {
+        newDirection = props.sortDirection === 'asc' ? 'desc' : 'asc'
+      }
+      
+      // Emit sort event to parent component
+      emit('sort', { field, direction: newDirection })
+    }
+
+    const getSortIcon = (field) => {
+      if (props.sortField !== field) {
+        return 'arrow-up-down' // Default unsorted icon
+      }
+      
+      return props.sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'
+    }
+
+    const getSortIconClass = (field) => {
+      if (props.sortField !== field) {
+        return 'text-gray-400' // Inactive sort icon
+      }
+      
+      return 'text-blue-600' // Active sort icon
+    }
+
+    const getSortButtonClass = (field) => {
+      if (props.sortField === field) {
+        return 'bg-blue-50' // Active sort button background
+      }
+      
+      return '' // Default button styling
+    }
+
     return {
       columns,
       listOptions,
@@ -596,7 +657,11 @@ export default {
       popupUser,
       popupPosition,
       showUserPopup,
-      hideUserPopup
+      hideUserPopup,
+      handleColumnSort,
+      getSortIcon,
+      getSortIconClass,
+      getSortButtonClass
     }
   }
 }
