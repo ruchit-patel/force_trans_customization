@@ -159,510 +159,519 @@
 </template>
 
 <script>
-import { computed, ref } from 'vue'
-import { ListView, Avatar, Badge, Button, FeatherIcon } from 'frappe-ui'
-import ListHeader from 'frappe-ui/src/components/ListView/ListHeader.vue'
-import ListHeaderItem from 'frappe-ui/src/components/ListView/ListHeaderItem.vue'
-import ListRow from 'frappe-ui/src/components/ListView/ListRow.vue'
-import ListRowItem from 'frappe-ui/src/components/ListView/ListRowItem.vue'
-import ListRows from 'frappe-ui/src/components/ListView/ListRows.vue'
-import ListSelectBanner from 'frappe-ui/src/components/ListView/ListSelectBanner.vue'
+import { Avatar, Badge, Button, FeatherIcon, ListView } from "frappe-ui"
+import ListHeader from "frappe-ui/src/components/ListView/ListHeader.vue"
+import ListHeaderItem from "frappe-ui/src/components/ListView/ListHeaderItem.vue"
+import ListRow from "frappe-ui/src/components/ListView/ListRow.vue"
+import ListRowItem from "frappe-ui/src/components/ListView/ListRowItem.vue"
+import ListRows from "frappe-ui/src/components/ListView/ListRows.vue"
+import ListSelectBanner from "frappe-ui/src/components/ListView/ListSelectBanner.vue"
+import { computed, ref } from "vue"
 
 // Enhanced status badge component with custom status values
 const StatusBadge = {
-  props: ['status'],
-  template: `
+	props: ["status"],
+	template: `
     <Badge :label="displayStatus" :theme="statusTheme" variant="subtle" />
   `,
-  computed: {
-    displayStatus() {
-      return this.status || 'New'
-    },
-    statusTheme() {
-      const status = this.status || 'New'
-      // Color mapping from issue_list.js to maintain consistency
-      const statusThemes = {
-        'New': 'blue',                      // 🔵 New issues - blue for fresh/attention needed
-        'In Review': 'orange',              // 🟠 Under review - orange for active progress  
-        'Waiting on Customer': 'yellow',    // 🟡 Customer action needed - yellow for pause/wait
-        'Confirmed': 'purple',              // 🟣 Confirmed and validated - purple for approval
-        'In Transit': 'blue',               // 🔷 Active transit - light-blue mapped to blue in Frappe UI
-        'In Transit Unmanaged': 'gray',     // ⚫ Unmanaged transit - grey for limited control
-        'Delivered': 'green',               // 🟢 Successfully delivered - green for success
-        'Closed': 'green',                  // 🟢 Fully completed - darkgreen mapped to green in Frappe UI
+	computed: {
+		displayStatus() {
+			return this.status || "New"
+		},
+		statusTheme() {
+			const status = this.status || "New"
+			// Color mapping from issue_list.js to maintain consistency
+			const statusThemes = {
+				New: "blue", // 🔵 New issues - blue for fresh/attention needed
+				"In Review": "orange", // 🟠 Under review - orange for active progress
+				"Waiting on Customer": "yellow", // 🟡 Customer action needed - yellow for pause/wait
+				Confirmed: "purple", // 🟣 Confirmed and validated - purple for approval
+				"In Transit": "blue", // 🔷 Active transit - light-blue mapped to blue in Frappe UI
+				"In Transit Unmanaged": "gray", // ⚫ Unmanaged transit - grey for limited control
+				Delivered: "green", // 🟢 Successfully delivered - green for success
+				Closed: "green", // 🟢 Fully completed - darkgreen mapped to green in Frappe UI
 
-        // Legacy Status Support (backward compatibility)
-        'Open': 'red',                      // 🔴 Legacy open state
-        'Replied': 'orange',                // 🟠 Legacy replied state  
-        'On Hold': 'yellow',                // 🟡 Legacy hold state
-        'Resolved': 'green'                 // 🟢 Legacy resolved state
-      }
-      return statusThemes[status] || 'gray'
-    }
-  },
-  components: { Badge }
+				// Legacy Status Support (backward compatibility)
+				Open: "red", // 🔴 Legacy open state
+				Replied: "orange", // 🟠 Legacy replied state
+				"On Hold": "yellow", // 🟡 Legacy hold state
+				Resolved: "green", // 🟢 Legacy resolved state
+			}
+			return statusThemes[status] || "gray"
+		},
+	},
+	components: { Badge },
 }
 
 // Enhanced priority badge component with visual indicators
 const PriorityBadge = {
-  props: ['priority'],
-  template: `
+	props: ["priority"],
+	template: `
     <div class="flex items-center gap-2">
       <div :class="priorityIndicatorClass" class="w-2 h-2 rounded-full"></div>
       <Badge :label="displayPriority" :theme="priorityTheme" variant="subtle" />
     </div>
   `,
-  computed: {
-    displayPriority() {
-      return this.priority || 'Medium'
-    },
-    priorityTheme() {
-      const priority = this.priority || 'Medium'
-      const priorityThemes = {
-        'Critical': 'red',
-        'High': 'red',
-        'Medium': 'yellow',
-        'Low': 'green'
-      }
-      return priorityThemes[priority] || 'yellow'
-    },
-    priorityIndicatorClass() {
-      const priority = this.priority || 'Medium'
-      return {
-        'bg-red-500': priority === 'Critical',
-        'bg-red-400': priority === 'High',
-        'bg-yellow-400': priority === 'Medium',
-        'bg-green-400': priority === 'Low'
-      }
-    }
-  },
-  components: { Badge }
+	computed: {
+		displayPriority() {
+			return this.priority || "Medium"
+		},
+		priorityTheme() {
+			const priority = this.priority || "Medium"
+			const priorityThemes = {
+				Critical: "red",
+				High: "red",
+				Medium: "yellow",
+				Low: "green",
+			}
+			return priorityThemes[priority] || "yellow"
+		},
+		priorityIndicatorClass() {
+			const priority = this.priority || "Medium"
+			return {
+				"bg-red-500": priority === "Critical",
+				"bg-red-400": priority === "High",
+				"bg-yellow-400": priority === "Medium",
+				"bg-green-400": priority === "Low",
+			}
+		},
+	},
+	components: { Badge },
 }
 
 // Issue type badge component for tags display
 const IssueTypeBadge = {
-  props: ['issueType'],
-  template: `
+	props: ["issueType"],
+	template: `
     <div v-if="issueType" class="flex items-center">
       <Badge :label="issueType" :theme="issueTypeTheme" variant="subtle" />
     </div>
     <span v-else class="text-gray-400 text-sm">-</span>
   `,
-  computed: {
-    issueTypeTheme() {
-      const type = this.issueType
-      if (!type) return 'gray'
+	computed: {
+		issueTypeTheme() {
+			const type = this.issueType
+			if (!type) return "gray"
 
-      // Color coding based on common issue types
-      const typeThemes = {
-        'Bug': 'red',
-        'Feature': 'blue',
-        'Enhancement': 'green',
-        'Task': 'purple',
-        'Support': 'orange',
-        'Question': 'yellow',
-        'Documentation': 'gray'
-      }
+			// Color coding based on common issue types
+			const typeThemes = {
+				Bug: "red",
+				Feature: "blue",
+				Enhancement: "green",
+				Task: "purple",
+				Support: "orange",
+				Question: "yellow",
+				Documentation: "gray",
+			}
 
-      // Check for partial matches if exact match not found
-      for (const [key, theme] of Object.entries(typeThemes)) {
-        if (type.toLowerCase().includes(key.toLowerCase())) {
-          return theme
-        }
-      }
+			// Check for partial matches if exact match not found
+			for (const [key, theme] of Object.entries(typeThemes)) {
+				if (type.toLowerCase().includes(key.toLowerCase())) {
+					return theme
+				}
+			}
 
-      return 'gray' // Default theme
-    }
-  },
-  components: { Badge }
+			return "gray" // Default theme
+		},
+	},
+	components: { Badge },
 }
 
 export default {
-  components: {
-    ListView,
-    Avatar,
-    Badge,
-    Button,
-    FeatherIcon,
-    ListHeader,
-    ListHeaderItem,
-    ListRow,
-    ListRowItem,
-    ListRows,
-    ListSelectBanner,
-    StatusBadge,
-    PriorityBadge,
-    IssueTypeBadge
-  },
-  props: {
-    issues: {
-      type: Array,
-      default: () => []
-    },
-    loading: {
-      type: Boolean,
-      default: false
-    },
-    sortField: {
-      type: String,
-      default: 'creation'
-    },
-    sortDirection: {
-      type: String,
-      default: 'desc'
-    }
-  },
-  emits: ['sort'],
-  setup(props, { emit }) {
-    // Popup state management
-    const showPopup = ref(false)
-    const popupUser = ref(null)
-    const popupPosition = ref({ x: 0, y: 0 })
+	components: {
+		ListView,
+		Avatar,
+		Badge,
+		Button,
+		FeatherIcon,
+		ListHeader,
+		ListHeaderItem,
+		ListRow,
+		ListRowItem,
+		ListRows,
+		ListSelectBanner,
+		StatusBadge,
+		PriorityBadge,
+		IssueTypeBadge,
+	},
+	props: {
+		issues: {
+			type: Array,
+			default: () => [],
+		},
+		loading: {
+			type: Boolean,
+			default: false,
+		},
+		sortField: {
+			type: String,
+			default: "creation",
+		},
+		sortDirection: {
+			type: String,
+			default: "desc",
+		},
+	},
+	emits: ["sort"],
+	setup(props, { emit }) {
+		// Popup state management
+		const showPopup = ref(false)
+		const popupUser = ref(null)
+		const popupPosition = ref({ x: 0, y: 0 })
 
-    // Helper methods
-    const getInitials = (name) => {
-      if (!name || typeof name !== 'string') {
-        return '?'
-      }
+		// Helper methods
+		const getInitials = (name) => {
+			if (!name || typeof name !== "string") {
+				return "?"
+			}
 
-      // If it's an email address, extract the part before @
-      if (name.includes('@')) {
-        const emailPart = name.split('@')[0]
-        
-        // If email part has dots or underscores, use those as separators
-        if (emailPart.includes('.') || emailPart.includes('_')) {
-          const parts = emailPart.split(/[._]/)
-          return parts.map(part => part[0]).join('').toUpperCase().slice(0, 2)
-        }
-        // Otherwise, take first 2 characters of email part
-        return emailPart.slice(0, 2).toUpperCase()
-      }
+			// If it's an email address, extract the part before @
+			if (name.includes("@")) {
+				const emailPart = name.split("@")[0]
 
-      // For regular names with spaces
-      if (name.includes(' ')) {
-        return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-      }
+				// If email part has dots or underscores, use those as separators
+				if (emailPart.includes(".") || emailPart.includes("_")) {
+					const parts = emailPart.split(/[._]/)
+					return parts
+						.map((part) => part[0])
+						.join("")
+						.toUpperCase()
+						.slice(0, 2)
+				}
+				// Otherwise, take first 2 characters of email part
+				return emailPart.slice(0, 2).toUpperCase()
+			}
 
-      // For single words, take first 2 characters
-      return name.slice(0, 2).toUpperCase()
-    }
+			// For regular names with spaces
+			if (name.includes(" ")) {
+				return name
+					.split(" ")
+					.map((n) => n[0])
+					.join("")
+					.toUpperCase()
+					.slice(0, 2)
+			}
 
-    // Format issue ID to show only year and serial number
-    const formatIssueId = (issueId) => {
-      if (!issueId) return ''
-      // Extract year and serial from ISS-2025-000016 format
-      const match = issueId.match(/ISS-(\d{4}-\d+)/)
-      return match ? match[1] : issueId
-    }
+			// For single words, take first 2 characters
+			return name.slice(0, 2).toUpperCase()
+		}
 
-    const stripHtml = (html) => {
-      if (!html) return ''
-      const tmp = document.createElement('div')
-      tmp.innerHTML = html
-      return tmp.textContent || tmp.innerText || ''
-    }
+		// Format issue ID to show only year and serial number
+		const formatIssueId = (issueId) => {
+			if (!issueId) return ""
+			// Extract year and serial from ISS-2025-000016 format
+			const match = issueId.match(/ISS-(\d{4}-\d+)/)
+			return match ? match[1] : issueId
+		}
 
-    const formatDate = (dateString) => {
-      if (!dateString) return '-'
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      })
-    }
+		const stripHtml = (html) => {
+			if (!html) return ""
+			const tmp = document.createElement("div")
+			tmp.innerHTML = html
+			return tmp.textContent || tmp.innerText || ""
+		}
 
-    const formatTime = (dateString) => {
-      if (!dateString) return ''
-      return new Date(dateString).toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    }
+		const formatDate = (dateString) => {
+			if (!dateString) return "-"
+			return new Date(dateString).toLocaleDateString("en-US", {
+				year: "numeric",
+				month: "short",
+				day: "numeric",
+			})
+		}
 
-    // Helper function to get status color
-    const getStatusBadgeColor = (status) => {
-      const statusColors = {
-        'New': 'blue',
-        'In Review': 'orange',
-        'Waiting on Customer': 'yellow',
-        'Confirmed': 'purple',
-        'In Transit': 'blue',
-        'In Transit Unmanaged': 'gray',
-        'Delivered': 'green',
-        'Closed': 'green',
-        'Open': 'red',
-        'Replied': 'orange',
-        'On Hold': 'yellow',
-        'Resolved': 'green'
-      }
-      return statusColors[status] || 'gray'
-    }
+		const formatTime = (dateString) => {
+			if (!dateString) return ""
+			return new Date(dateString).toLocaleTimeString("en-US", {
+				hour: "2-digit",
+				minute: "2-digit",
+			})
+		}
 
-    // Helper function to get priority color
-    const getPriorityBadgeColor = (priority) => {
-      const priorityColors = {
-        'Critical': 'red',
-        'High': 'red',
-        'Medium': 'yellow',
-        'Low': 'green'
-      }
-      return priorityColors[priority] || 'yellow'
-    }
+		// Helper function to get status color
+		const getStatusBadgeColor = (status) => {
+			const statusColors = {
+				New: "blue",
+				"In Review": "orange",
+				"Waiting on Customer": "yellow",
+				Confirmed: "purple",
+				"In Transit": "blue",
+				"In Transit Unmanaged": "gray",
+				Delivered: "green",
+				Closed: "green",
+				Open: "red",
+				Replied: "orange",
+				"On Hold": "yellow",
+				Resolved: "green",
+			}
+			return statusColors[status] || "gray"
+		}
 
-    // Transform issues data to include badge structure for ListView
-    const transformedIssues = computed(() => {
-      return props.issues.map(issue => ({
-        ...issue,
-        status: {
-          label: issue.status || 'New',
-          color: getStatusBadgeColor(issue.status)
-        },
-        priority: {
-          label: issue.priority || 'Medium',
-          color: getPriorityBadgeColor(issue.priority)
-        }
-      }))
-    })
+		// Helper function to get priority color
+		const getPriorityBadgeColor = (priority) => {
+			const priorityColors = {
+				Critical: "red",
+				High: "red",
+				Medium: "yellow",
+				Low: "green",
+			}
+			return priorityColors[priority] || "yellow"
+		}
 
-    // ListView columns configuration with sortable support
-    const columns = computed(() => [
-      {
-        label: 'Issue ID',
-        key: 'name',
-        width: '110px',
-        sortable: true
-      },
-      {
-        label: 'Title',
-        key: 'subject',
-        width: 4,
-        sortable: true
-      },
-      {
-        label: 'Status',
-        key: 'status',
-        width: '160px',
-        sortable: true
-      },
-      {
-        label: 'Priority',
-        key: 'priority',
-        width: '130px',
-        sortable: true
-      },
-      {
-        label: 'Assignee',
-        key: 'raised_by',
-        width: '150px',
-        sortable: true
-      },
-      {
-        label: 'Assigned Users',
-        key: 'custom_users_assigned',
-        width: '180px',
-        sortable: false
-      },
-      {
-        label: 'Project',
-        key: 'project',
-        width: '120px',
-        sortable: true
-      },
-      {
-        label: 'Tags',
-        key: 'issue_type',
-        width: '100px',
-        sortable: false
-      },
-      {
-        label: 'Created At',
-        key: 'creation',
-        width: '120px',
-        sortable: true
-      }
-    ])
+		// Transform issues data to include badge structure for ListView
+		const transformedIssues = computed(() => {
+			return props.issues.map((issue) => ({
+				...issue,
+				status: {
+					label: issue.status || "New",
+					color: getStatusBadgeColor(issue.status),
+				},
+				priority: {
+					label: issue.priority || "Medium",
+					color: getPriorityBadgeColor(issue.priority),
+				},
+			}))
+		})
 
-    // ListView options
-    const listOptions = computed(() => ({
-      showTooltip: true,
-      selectable: true,
-      resizeColumn: false,
-      rowHeight: 60,
-      emptyState: {
-        title: 'No issues found',
-        description: 'Try adjusting your search or filter criteria'
-      },
-      onRowClick: (row) => {
-        // Handle row click
-        console.log('Row clicked:', row)
-      }
-    }))
+		// ListView columns configuration with sortable support
+		const columns = computed(() => [
+			{
+				label: "Issue ID",
+				key: "name",
+				width: "110px",
+				sortable: true,
+			},
+			{
+				label: "Title",
+				key: "subject",
+				width: 4,
+				sortable: true,
+			},
+			{
+				label: "Status",
+				key: "status",
+				width: "160px",
+				sortable: true,
+			},
+			{
+				label: "Priority",
+				key: "priority",
+				width: "130px",
+				sortable: true,
+			},
+			{
+				label: "Assignee",
+				key: "raised_by",
+				width: "150px",
+				sortable: true,
+			},
+			{
+				label: "Assigned Users",
+				key: "custom_users_assigned",
+				width: "180px",
+				sortable: false,
+			},
+			{
+				label: "Project",
+				key: "project",
+				width: "120px",
+				sortable: true,
+			},
+			{
+				label: "Tags",
+				key: "issue_type",
+				width: "100px",
+				sortable: false,
+			},
+			{
+				label: "Created At",
+				key: "creation",
+				width: "120px",
+				sortable: true,
+			},
+		])
 
-    // Handle selections
-    const handleSelections = (selections) => {
-      console.log('Selected rows:', selections)
-    }
+		// ListView options
+		const listOptions = computed(() => ({
+			showTooltip: true,
+			selectable: true,
+			resizeColumn: false,
+			rowHeight: 60,
+			emptyState: {
+				title: "No issues found",
+				description: "Try adjusting your search or filter criteria",
+			},
+			onRowClick: (row) => {
+				// Handle row click
+				console.log("Row clicked:", row)
+			},
+		}))
 
-    // Handle issue click
-    const handleIssueClick = (issue) => {
-      console.log('Issue clicked:', issue)
-      // TODO: Navigate to issue detail or emit event
-    }
+		// Handle selections
+		const handleSelections = (selections) => {
+			console.log("Selected rows:", selections)
+		}
 
-    // Get status color classes for indicator dots
-    const getStatusColor = (status) => {
-      const statusValue = status || 'New'
-      // Color mapping from issue_list.js to maintain consistency
-      return {
-        'bg-blue-500': statusValue === 'New',                      // 🔵 New issues - blue for fresh/attention needed
-        'bg-orange-500': statusValue === 'In Review',              // 🟠 Under review - orange for active progress  
-        'bg-yellow-500': statusValue === 'Waiting on Customer',    // 🟡 Customer action needed - yellow for pause/wait
-        'bg-purple-500': statusValue === 'Confirmed',              // 🟣 Confirmed and validated - purple for approval
-        'bg-blue-500': statusValue === 'In Transit',               // 🔷 Active transit - light-blue mapped to blue in Tailwind
-        'bg-gray-500': statusValue === 'In Transit Unmanaged',     // ⚫ Unmanaged transit - grey for limited control
-        'bg-green-500': statusValue === 'Delivered',               // 🟢 Successfully delivered - green for success
-        'bg-green-500': statusValue === 'Closed',                  // 🟢 Fully completed - darkgreen mapped to green in Tailwind
+		// Handle issue click
+		const handleIssueClick = (issue) => {
+			console.log("Issue clicked:", issue)
+			// TODO: Navigate to issue detail or emit event
+		}
 
-        // Legacy Status Support (backward compatibility)
-        'bg-red-500': statusValue === 'Open',                      // 🔴 Legacy open state
-        'bg-orange-500': statusValue === 'Replied',                // 🟠 Legacy replied state  
-        'bg-yellow-500': statusValue === 'On Hold',                // 🟡 Legacy hold state
-        'bg-green-500': statusValue === 'Resolved'                 // 🟢 Legacy resolved state
-      }
-    }
+		// Get status color classes for indicator dots
+		const getStatusColor = (status) => {
+			const statusValue = status || "New"
+			// Color mapping from issue_list.js to maintain consistency
+			return {
+				"bg-blue-500": statusValue === "New", // 🔵 New issues - blue for fresh/attention needed
+				"bg-orange-500": statusValue === "In Review", // 🟠 Under review - orange for active progress
+				"bg-yellow-500": statusValue === "Waiting on Customer", // 🟡 Customer action needed - yellow for pause/wait
+				"bg-purple-500": statusValue === "Confirmed", // 🟣 Confirmed and validated - purple for approval
+				"bg-blue-500": statusValue === "In Transit", // 🔷 Active transit - light-blue mapped to blue in Tailwind
+				"bg-gray-500": statusValue === "In Transit Unmanaged", // ⚫ Unmanaged transit - grey for limited control
+				"bg-green-500": statusValue === "Delivered", // 🟢 Successfully delivered - green for success
+				"bg-green-500": statusValue === "Closed", // 🟢 Fully completed - darkgreen mapped to green in Tailwind
 
-    // Get priority color classes
-    const getPriorityColor = (priority) => {
-      const priorityValue = priority || 'Medium'
-      return {
-        'bg-red-500': priorityValue === 'Critical' || priorityValue === 'High',
-        'bg-yellow-500': priorityValue === 'Medium',
-        'bg-green-500': priorityValue === 'Low'
-      }
-    }
+				// Legacy Status Support (backward compatibility)
+				"bg-red-500": statusValue === "Open", // 🔴 Legacy open state
+				"bg-orange-500": statusValue === "Replied", // 🟠 Legacy replied state
+				"bg-yellow-500": statusValue === "On Hold", // 🟡 Legacy hold state
+				"bg-green-500": statusValue === "Resolved", // 🟢 Legacy resolved state
+			}
+		}
 
-    // Get status badge CSS classes
-    const getStatusBadgeClass = (status) => {
-      const statusValue = status || 'New'
-      const statusClasses = {
-        'New': 'bg-blue-100 text-blue-800',
-        'In Review': 'bg-orange-100 text-orange-800',
-        'Waiting on Customer': 'bg-yellow-100 text-yellow-800',
-        'Confirmed': 'bg-purple-100 text-purple-800',
-        'In Transit': 'bg-blue-100 text-blue-800',
-        'In Transit Unmanaged': 'bg-gray-100 text-gray-800',
-        'Delivered': 'bg-green-100 text-green-800',
-        'Closed': 'bg-green-100 text-green-800',
-        'Open': 'bg-red-100 text-red-800',
-        'Replied': 'bg-orange-100 text-orange-800',
-        'On Hold': 'bg-yellow-100 text-yellow-800',
-        'Resolved': 'bg-green-100 text-green-800'
-      }
-      return statusClasses[statusValue] || 'bg-gray-100 text-gray-800'
-    }
+		// Get priority color classes
+		const getPriorityColor = (priority) => {
+			const priorityValue = priority || "Medium"
+			return {
+				"bg-red-500": priorityValue === "Critical" || priorityValue === "High",
+				"bg-yellow-500": priorityValue === "Medium",
+				"bg-green-500": priorityValue === "Low",
+			}
+		}
 
-    // Get priority badge CSS classes
-    const getPriorityBadgeClass = (priority) => {
-      const priorityValue = priority || 'Medium'
-      const priorityClasses = {
-        'Critical': 'bg-red-100 text-red-800',
-        'High': 'bg-red-100 text-red-800',
-        'Medium': 'bg-yellow-100 text-yellow-800',
-        'Low': 'bg-green-100 text-green-800'
-      }
-      return priorityClasses[priorityValue] || 'bg-yellow-100 text-yellow-800'
-    }
+		// Get status badge CSS classes
+		const getStatusBadgeClass = (status) => {
+			const statusValue = status || "New"
+			const statusClasses = {
+				New: "bg-blue-100 text-blue-800",
+				"In Review": "bg-orange-100 text-orange-800",
+				"Waiting on Customer": "bg-yellow-100 text-yellow-800",
+				Confirmed: "bg-purple-100 text-purple-800",
+				"In Transit": "bg-blue-100 text-blue-800",
+				"In Transit Unmanaged": "bg-gray-100 text-gray-800",
+				Delivered: "bg-green-100 text-green-800",
+				Closed: "bg-green-100 text-green-800",
+				Open: "bg-red-100 text-red-800",
+				Replied: "bg-orange-100 text-orange-800",
+				"On Hold": "bg-yellow-100 text-yellow-800",
+				Resolved: "bg-green-100 text-green-800",
+			}
+			return statusClasses[statusValue] || "bg-gray-100 text-gray-800"
+		}
 
-    // Get priority indicator dot CSS classes
-    const getPriorityIndicatorClass = (priority) => {
-      const priorityValue = priority || 'Medium'
-      return {
-        'bg-red-500': priorityValue === 'Critical',
-        'bg-red-400': priorityValue === 'High',
-        'bg-yellow-400': priorityValue === 'Medium',
-        'bg-green-400': priorityValue === 'Low'
-      }
-    }
+		// Get priority badge CSS classes
+		const getPriorityBadgeClass = (priority) => {
+			const priorityValue = priority || "Medium"
+			const priorityClasses = {
+				Critical: "bg-red-100 text-red-800",
+				High: "bg-red-100 text-red-800",
+				Medium: "bg-yellow-100 text-yellow-800",
+				Low: "bg-green-100 text-green-800",
+			}
+			return priorityClasses[priorityValue] || "bg-yellow-100 text-yellow-800"
+		}
 
-    // Popup functions for user hover
-    const showUserPopup = (event, user) => {
-      const rect = event.target.getBoundingClientRect()
-      popupPosition.value = {
-        x: rect.left + rect.width / 2,
-        y: rect.top - 10
-      }
-      popupUser.value = user
-      showPopup.value = true
-    }
+		// Get priority indicator dot CSS classes
+		const getPriorityIndicatorClass = (priority) => {
+			const priorityValue = priority || "Medium"
+			return {
+				"bg-red-500": priorityValue === "Critical",
+				"bg-red-400": priorityValue === "High",
+				"bg-yellow-400": priorityValue === "Medium",
+				"bg-green-400": priorityValue === "Low",
+			}
+		}
 
-    const hideUserPopup = () => {
-      showPopup.value = false
-      popupUser.value = null
-    }
+		// Popup functions for user hover
+		const showUserPopup = (event, user) => {
+			const rect = event.target.getBoundingClientRect()
+			popupPosition.value = {
+				x: rect.left + rect.width / 2,
+				y: rect.top - 10,
+			}
+			popupUser.value = user
+			showPopup.value = true
+		}
 
-    // Sorting functionality
-    const handleColumnSort = (field) => {
-      let newDirection = 'asc'
-      
-      // If clicking the same field, toggle direction
-      if (props.sortField === field) {
-        newDirection = props.sortDirection === 'asc' ? 'desc' : 'asc'
-      }
-      
-      // Emit sort event to parent component
-      emit('sort', { field, direction: newDirection })
-    }
+		const hideUserPopup = () => {
+			showPopup.value = false
+			popupUser.value = null
+		}
 
-    const getSortIcon = (field) => {
-      if (props.sortField !== field) {
-        return 'arrow-up-down' // Default unsorted icon
-      }
-      
-      return props.sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'
-    }
+		// Sorting functionality
+		const handleColumnSort = (field) => {
+			let newDirection = "asc"
 
-    const getSortIconClass = (field) => {
-      if (props.sortField !== field) {
-        return 'text-gray-400' // Inactive sort icon
-      }
-      
-      return 'text-blue-600' // Active sort icon
-    }
+			// If clicking the same field, toggle direction
+			if (props.sortField === field) {
+				newDirection = props.sortDirection === "asc" ? "desc" : "asc"
+			}
 
-    const getSortButtonClass = (field) => {
-      if (props.sortField === field) {
-        return 'bg-blue-50' // Active sort button background
-      }
-      
-      return '' // Default button styling
-    }
+			// Emit sort event to parent component
+			emit("sort", { field, direction: newDirection })
+		}
 
-    return {
-      columns,
-      listOptions,
-      transformedIssues,
-      handleSelections,
-      handleIssueClick,
-      getStatusColor,
-      getPriorityColor,
-      getStatusBadgeClass,
-      getPriorityBadgeClass,
-      getPriorityIndicatorClass,
-      getInitials,
-      formatIssueId,
-      stripHtml,
-      formatDate,
-      formatTime,
-      showPopup,
-      popupUser,
-      popupPosition,
-      showUserPopup,
-      hideUserPopup,
-      handleColumnSort,
-      getSortIcon,
-      getSortIconClass,
-      getSortButtonClass
-    }
-  }
+		const getSortIcon = (field) => {
+			if (props.sortField !== field) {
+				return "arrow-up-down" // Default unsorted icon
+			}
+
+			return props.sortDirection === "asc" ? "arrow-up" : "arrow-down"
+		}
+
+		const getSortIconClass = (field) => {
+			if (props.sortField !== field) {
+				return "text-gray-400" // Inactive sort icon
+			}
+
+			return "text-blue-600" // Active sort icon
+		}
+
+		const getSortButtonClass = (field) => {
+			if (props.sortField === field) {
+				return "bg-blue-50" // Active sort button background
+			}
+
+			return "" // Default button styling
+		}
+
+		return {
+			columns,
+			listOptions,
+			transformedIssues,
+			handleSelections,
+			handleIssueClick,
+			getStatusColor,
+			getPriorityColor,
+			getStatusBadgeClass,
+			getPriorityBadgeClass,
+			getPriorityIndicatorClass,
+			getInitials,
+			formatIssueId,
+			stripHtml,
+			formatDate,
+			formatTime,
+			showPopup,
+			popupUser,
+			popupPosition,
+			showUserPopup,
+			hideUserPopup,
+			handleColumnSort,
+			getSortIcon,
+			getSortIconClass,
+			getSortButtonClass,
+		}
+	},
 }
 </script>

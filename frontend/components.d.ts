@@ -9,6 +9,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     IssueFilters: typeof import('./src/components/IssueFilters.vue')['default']
+    IssuePagination: typeof import('./src/components/IssuePagination.vue')['default']
     IssueStats: typeof import('./src/components/IssueStats.vue')['default']
     IssueTable: typeof import('./src/components/IssueTable.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

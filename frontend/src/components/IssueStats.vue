@@ -24,20 +24,30 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { session } from '../data/session'
+import { computed } from "vue"
+import { session } from "../data/session"
 
 const props = defineProps({
-  issues: {
-    type: Array,
-    default: () => []
-  }
+	issues: {
+		type: Array,
+		default: () => [],
+	},
 })
 
 // Statistics calculations
 const teamTickets = computed(() => props.issues.length)
-const openTickets = computed(() => props.issues.filter(issue => issue.status === 'Open').length)
-const assignedToMe = computed(() => props.issues.filter(issue => issue.raised_by === session.user).length)
-const actionableTickets = computed(() => props.issues.filter(issue => ['Open', 'Replied'].includes(issue.status)).length)
-const responseTickets = computed(() => props.issues.filter(issue => issue.status === 'Replied').length)
+const openTickets = computed(
+	() => props.issues.filter((issue) => issue.status === "Open").length,
+)
+const assignedToMe = computed(
+	() => props.issues.filter((issue) => issue.raised_by === session.user).length,
+)
+const actionableTickets = computed(
+	() =>
+		props.issues.filter((issue) => ["Open", "Replied"].includes(issue.status))
+			.length,
+)
+const responseTickets = computed(
+	() => props.issues.filter((issue) => issue.status === "Replied").length,
+)
 </script>
