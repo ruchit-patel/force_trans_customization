@@ -57,22 +57,57 @@
         :totalItems="totalIssues"
         @pageChange="handlePageChange"
       />
+
+      <!-- Real-time Connection Status -->
+      <div class="fixed top-20 right-4 w-64">
+        <div class="bg-white rounded-lg shadow-sm border p-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-medium text-gray-900 flex items-center">
+              <div 
+                :class="realtimeEventsSetup ? 'bg-green-500 animate-pulse' : 'bg-red-500'"
+                class="w-2 h-2 rounded-full mr-2"
+              ></div>
+              List Updates
+            </h3>
+            <button 
+              @click="manualRefresh"
+              class="text-xs text-blue-600 hover:text-blue-800"
+              title="Manual refresh"
+            >
+              Refresh
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 mt-1">
+            {{ realtimeEventsSetup ? 'Listening for list_update events' : 'Realtime updates disabled' }}
+          </p>
+          <p v-if="pendingDocumentRefreshes > 0" class="text-xs text-orange-600 mt-1">
+            {{ pendingDocumentRefreshes }} updates pending...
+          </p>
+        </div>
+      </div>
     </div>
+
+    <!-- Real-time Notifications -->
+    <RealTimeNotifications
+      :notifications="notifications"
+      @remove="removeNotification"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue"
+import { computed, onMounted, onUnmounted, ref, watch } from "vue"
 import IssueFilters from "../components/IssueFilters.vue"
 import IssuePagination from "../components/IssuePagination.vue"
 import IssueStats from "../components/IssueStats.vue"
 import IssueTable from "../components/IssueTable.vue"
+import RealTimeNotifications from "../components/RealTimeNotifications.vue"
 import { useIssueFilters } from "../composables/useIssueFilters"
+import { useIssueListUpdates } from "../composables/useIssueListUpdates"
 import {
 	getIssueTypeOptions,
 	getIssuesCount,
 	getPriorityOptions,
-	getProjectOptions,
 	getStatusOptions,
 	issuesCountResource,
 	issuesResource,
@@ -89,6 +124,32 @@ const {
 	sortOrder,
 	getAssigneeOptions,
 } = useIssueFilters()
+
+// Realtime list updates composable (Frappe-style)
+const {
+	pendingDocumentRefreshes,
+	realtimeEventsSetup,
+	manualRefresh
+} = useIssueListUpdates()
+
+// Simplified notification system for list updates
+const notifications = ref([])
+
+const addNotification = (notification) => {
+	notifications.value.push({
+		id: Date.now() + Math.random(),
+		...notification
+	})
+	
+	// Auto-remove after 5 seconds
+	setTimeout(() => {
+		removeNotification(notifications.value[notifications.value.length - 1]?.id)
+	}, 5000)
+}
+
+const removeNotification = (id) => {
+	notifications.value = notifications.value.filter(n => n.id !== id)
+}
 
 // Computed properties for displaying data
 const allIssues = computed(() => issuesResource.data || [])
@@ -119,7 +180,6 @@ const handleSort = ({ field, direction }) => {
 // Filter options
 const priorityOptions = computed(() => getPriorityOptions())
 const tagsOptions = computed(() => getIssueTypeOptions()) // Issue types as tags
-const projectOptions = computed(() => getProjectOptions())
 const statusOptions = computed(() => getStatusOptions())
 const assigneeOptions = computed(() => getAssigneeOptions(allIssues.value))
 
@@ -176,5 +236,22 @@ onMounted(() => {
 
 	// Load initial count
 	getIssuesCount(apiFilters.value)
+	
+	// Listen for list update events from the composable
+	window.addEventListener('issueListUpdated', (event) => {
+		const { count, documents } = event.detail
+		addNotification({
+			type: 'info',
+			title: 'List Updated',
+			message: `${count} issue${count > 1 ? 's' : ''} updated: ${documents.slice(0, 3).join(', ')}${documents.length > 3 ? '...' : ''}`,
+			timestamp: new Date()
+		})
+	})
 })
+
+onUnmounted(() => {
+	// Clean up event listener
+	window.removeEventListener('issueListUpdated', () => {})
+})
+
 </script>

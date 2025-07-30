@@ -154,6 +154,12 @@ app_include_js = [
 doc_events = {
 	"Communication": {
 		"after_insert": "force_trans_customization.custom.communication.on_communication_after_insert"
+	},
+	"Issue": {
+		"after_insert": "force_trans_customization.custom.issue_list_hooks.on_issue_insert",
+		"on_update": "force_trans_customization.custom.issue_list_hooks.on_issue_save",
+		"on_cancel": "force_trans_customization.custom.issue_list_hooks.on_issue_cancel",
+		"on_trash": "force_trans_customization.custom.issue_list_hooks.on_issue_trash"
 	}
 }
 

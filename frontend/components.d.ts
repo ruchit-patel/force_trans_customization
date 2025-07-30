@@ -8,10 +8,13 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ConflictResolution: typeof import('./src/components/ConflictResolution.vue')['default']
+    ConnectedUsers: typeof import('./src/components/ConnectedUsers.vue')['default']
     IssueFilters: typeof import('./src/components/IssueFilters.vue')['default']
     IssuePagination: typeof import('./src/components/IssuePagination.vue')['default']
     IssueStats: typeof import('./src/components/IssueStats.vue')['default']
     IssueTable: typeof import('./src/components/IssueTable.vue')['default']
+    RealTimeNotifications: typeof import('./src/components/RealTimeNotifications.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

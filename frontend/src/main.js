@@ -43,6 +43,22 @@ app.use(pageMetaPlugin)
 const socket = initSocket()
 app.config.globalProperties.$socket = socket
 
+// Make socket available globally for debugging
+if (typeof window !== 'undefined') {
+	window.socket = socket
+	
+	// Load test utilities in development
+	if (import.meta.env.DEV) {
+		import('./utils/realtimeTest.js').then(() => {
+			console.log('🧪 Realtime test functions available:');
+			console.log('- testRealtimeConnection()');
+			console.log('- testBackendEmission()');
+			console.log('- createTestIssue()');
+			console.log('- updateTestIssue(issueName)');
+		})
+	}
+}
+
 for (const key in globalComponents) {
 	app.component(key, globalComponents[key])
 }
