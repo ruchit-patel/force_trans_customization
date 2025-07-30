@@ -58,32 +58,52 @@
         @pageChange="handlePageChange"
       />
 
-      <!-- Real-time Connection Status -->
-      <div class="fixed top-20 right-4 w-64">
-        <div class="bg-white rounded-lg shadow-sm border p-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-medium text-gray-900 flex items-center">
-              <div 
-                :class="realtimeEventsSetup ? 'bg-green-500 animate-pulse' : 'bg-red-500'"
-                class="w-2 h-2 rounded-full mr-2"
-              ></div>
-              List Updates
-            </h3>
-            <button 
-              @click="manualRefresh"
-              class="text-xs text-blue-600 hover:text-blue-800"
-              title="Manual refresh"
+      <!-- Compact Real-time Status Icons (Vertical) -->
+      <div class="fixed top-20 right-4 flex flex-col space-y-2">
+        <!-- Connection Status -->
+        <div 
+          class="group relative bg-white rounded-full shadow-lg border p-2 hover:shadow-xl transition-all duration-200"
+          :title="realtimeEventsSetup ? 'Real-time updates active' : 'Real-time updates disabled'"
+        >
+          <!-- Connection Icon with Status -->
+          <div class="relative">
+            <FeatherIcon 
+              :name="realtimeEventsSetup ? 'wifi' : 'wifi-off'" 
+              :class="[
+                'h-5 w-5 transition-colors duration-200',
+                realtimeEventsSetup ? 'text-green-600' : 'text-red-500'
+              ]"
+            />
+            <!-- Status Dot -->
+            <div 
+              :class="[
+                'absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white',
+                realtimeEventsSetup 
+                  ? 'bg-green-500 animate-pulse' 
+                  : 'bg-red-500'
+              ]"
+            ></div>
+            <!-- Pending Updates Badge -->
+            <div 
+              v-if="pendingDocumentRefreshes > 0"
+              class="absolute -top-2 -right-2 bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium animate-bounce"
             >
-              Refresh
-            </button>
+              {{ pendingDocumentRefreshes > 9 ? '9+' : pendingDocumentRefreshes }}
+            </div>
           </div>
-          <p class="text-xs text-gray-500 mt-1">
-            {{ realtimeEventsSetup ? 'Listening for list_update events' : 'Realtime updates disabled' }}
-          </p>
-          <p v-if="pendingDocumentRefreshes > 0" class="text-xs text-orange-600 mt-1">
-            {{ pendingDocumentRefreshes }} updates pending...
-          </p>
         </div>
+
+        <!-- Manual Refresh Button -->
+        <button 
+          @click="manualRefresh"
+          class="group bg-white rounded-full shadow-lg border p-2 hover:shadow-xl hover:bg-blue-50 transition-all duration-200 active:scale-95"
+          title="Manual refresh"
+        >
+          <FeatherIcon 
+            name="refresh-cw" 
+            class="h-5 w-5 text-gray-600 group-hover:text-blue-600 group-active:rotate-180 transition-all duration-300"
+          />
+        </button>
       </div>
     </div>
 
@@ -97,6 +117,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
+import { Button, FeatherIcon } from "frappe-ui"
 import IssueFilters from "../components/IssueFilters.vue"
 import IssuePagination from "../components/IssuePagination.vue"
 import IssueStats from "../components/IssueStats.vue"
