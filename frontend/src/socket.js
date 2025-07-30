@@ -9,9 +9,6 @@ export function initSocket() {
 		
 		// Use Frappe's standard socketio URL pattern
 		const socketUrl = `http://${host}:${socketio_port}/${siteName}`
-		
-		console.log('Attempting socket connection to:', socketUrl)
-		console.log('Site name:', siteName)
 
 		socket = io(socketUrl, {
 			withCredentials: true,
@@ -21,29 +18,14 @@ export function initSocket() {
 			timeout: 20000
 		})
 		
-		// Add connection event handlers for debugging
+		// Add connection event handlers
 		socket.on('connect', () => {
-			console.log('Socket connected successfully:', socket.id)
-			
 			// Subscribe to doctype updates immediately after connection
 			socket.emit('doctype_subscribe', 'Issue')
-			console.log('Subscribed to Issue doctype updates')
-			
-			// Listen for all events for debugging
-			socket.onAny((eventName, ...args) => {
-				if (eventName.includes('list_update') || eventName.includes('Issue') || eventName.includes('doc_')) {
-					console.log('🔥 Socket received event:', eventName, args)
-				}
-			})
 		})
 		
 		socket.on('connect_error', (error) => {
 			console.error('Socket connection error:', error.message)
-			console.log('Trying fallback connection methods...')
-		})
-		
-		socket.on('disconnect', (reason) => {
-			console.log('Socket disconnected:', reason)
 		})
 		
 		socket.on('error', (error) => {

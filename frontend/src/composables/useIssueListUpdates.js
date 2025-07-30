@@ -29,43 +29,26 @@ export function useIssueListUpdates() {
     if (!socket || realtimeEventsSetup.value) {
       return
     }
-
-    console.log('Setting up realtime updates for Issue doctype')
     
     // Subscribe to Issue doctype updates (Frappe's standard way)
     socket.emit('doctype_subscribe', 'Issue')
-    console.log('Emitted doctype_subscribe for Issue')
-    
-    // Debug: listen for all events to see what we're actually receiving
-    socket.onAny((eventName, ...args) => {
-      if (eventName.includes('list_update') || eventName.includes('Issue') || eventName.includes('doc_')) {
-        console.log('Socket received event:', eventName, args)
-      }
-    })
     
     // Remove any existing listeners to avoid duplicates
     socket.off('list_update')
     
     // Listen for Frappe's standard list_update event
     socket.on('list_update', (data) => {
-      console.log('Received list_update event:', data)
-      
       if (data?.doctype !== 'Issue') {
-        console.log('Skipping list_update - not for Issue doctype')
         return
       }
 
-      console.log('Processing list_update for Issue:', data)
-
       // Skip updates if we're in a state where updates should be avoided
       if (avoidRealtimeUpdate()) {
-        console.log('Skipping realtime update due to current state')
         return
       }
 
       // Add to pending refreshes
       pendingDocumentRefreshes.value.push(data)
-      console.log('Added to pending refreshes, total pending:', pendingDocumentRefreshes.value.length)
       debouncedRefresh()
     })
 
@@ -77,8 +60,6 @@ export function useIssueListUpdates() {
         if (data?.doctype !== 'Issue') {
           return
         }
-
-        console.log(`Received ${eventName} for Issue:`, data)
 
         if (avoidRealtimeUpdate()) {
           return
@@ -100,15 +81,12 @@ export function useIssueListUpdates() {
     })
 
     realtimeEventsSetup.value = true
-    console.log('Realtime events setup completed for Issue doctype')
   }
 
   const disableRealtimeUpdates = () => {
     if (!socket || !realtimeEventsSetup.value) {
       return
     }
-
-    console.log('Disabling realtime updates for Issue doctype')
     
     // Unsubscribe from doctype updates
     socket.emit('doctype_unsubscribe', 'Issue')
@@ -128,13 +106,10 @@ export function useIssueListUpdates() {
       return
     }
 
-    console.log('Processing document refreshes:', pendingDocumentRefreshes.value.length, 'pending')
-
     // Check if we're still on the correct route/page
     const currentRoute = window.location.hash || window.location.pathname
     if (!currentRoute.includes('issue-tracker') && !currentRoute.includes('issues')) {
       // Clear pending refreshes if user navigated away
-      console.log('User not on issue list page, clearing pending refreshes')
       pendingDocumentRefreshes.value = []
       disableRealtimeUpdates()
       return
@@ -143,7 +118,6 @@ export function useIssueListUpdates() {
     // Get unique document names from pending refreshes
     const uniqueDocuments = [...new Set(pendingDocumentRefreshes.value.map(d => d.name))]
     const refreshCount = uniqueDocuments.length
-    console.log('Refreshing issues for documents:', uniqueDocuments)
 
     // Clear pending refreshes
     pendingDocumentRefreshes.value = []
@@ -152,7 +126,6 @@ export function useIssueListUpdates() {
     try {
       reloadIssues()
       getIssuesCount()
-      console.log('Issue list refreshed successfully')
       
       // Emit a custom event that the parent component can listen to for notifications
       if (window && typeof window.dispatchEvent === 'function') {
@@ -185,7 +158,6 @@ export function useIssueListUpdates() {
 
   // Manual refresh method (useful for pull-to-refresh or manual refresh buttons)
   const manualRefresh = () => {
-    console.log('Manual refresh triggered')
     pendingDocumentRefreshes.value = [] // Clear any pending
     try {
       reloadIssues()
@@ -197,12 +169,10 @@ export function useIssueListUpdates() {
 
   // Socket connection handlers
   const handleConnect = () => {
-    console.log('Socket connected, setting up realtime updates')
     setupRealtimeUpdates()
   }
 
   const handleDisconnect = () => {
-    console.log('Socket disconnected, disabling realtime updates')
     realtimeEventsSetup.value = false
   }
 
@@ -214,7 +184,6 @@ export function useIssueListUpdates() {
   // Lifecycle management
   onMounted(() => {
     if (!socket) {
-      console.warn('Socket not available, realtime updates disabled')
       return
     }
 
