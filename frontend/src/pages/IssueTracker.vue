@@ -39,6 +39,9 @@
         :priorityOptions="priorityOptions"
         :assigneeOptions="assigneeOptions"
         :tagsOptions="tagsOptions"
+        :filteredCount="totalIssues"
+        :issues="allIssues"
+        @suggestion-selected="handleSuggestionSelected"
       />
 
       <!-- Issues Table -->
@@ -204,6 +207,13 @@ const handleSort = ({ field, direction }) => {
 	const newSortOrder = `${field} ${direction}`
 	// This will trigger the watcher and reload data
 	filters.value.sortBy = newSortOrder
+}
+
+const handleSuggestionSelected = (suggestion) => {
+	// Handle when a search suggestion is selected
+	console.log('Selected suggestion:', suggestion)
+	// You can add navigation logic here if needed
+	// For example: router.push(`/issue/${suggestion.name}`)
 }
 
 // Filter options

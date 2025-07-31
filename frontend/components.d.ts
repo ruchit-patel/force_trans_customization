@@ -10,6 +10,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     ConflictResolution: typeof import('./src/components/ConflictResolution.vue')['default']
     ConnectedUsers: typeof import('./src/components/ConnectedUsers.vue')['default']
+    CustomSearchBox: typeof import('./src/components/CustomSearchBox.vue')['default']
     IssueFilters: typeof import('./src/components/IssueFilters.vue')['default']
     IssuePagination: typeof import('./src/components/IssuePagination.vue')['default']
     IssueStats: typeof import('./src/components/IssueStats.vue')['default']
@@ -17,5 +18,6 @@ declare module 'vue' {
     RealTimeNotifications: typeof import('./src/components/RealTimeNotifications.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    Seachbox: typeof import('./src/components/Seachbox.vue')['default']
   }
 }
