@@ -20,7 +20,7 @@ export function initSocket() {
 			timeout: 20000
 		}
 
-		if (host.includes('.frappe.cloud')) {
+		if (host.includes('.force-trans.com')) {
 			// Frappe Cloud configuration
 			socketUrl = `${protocol}://${host}`
 			socketOptions = {
