@@ -45,7 +45,7 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             limit_start=limit_start
         )
         
-        # For each issue, fetch the custom_users_assigned child table data
+        # For each issue, fetch the custom_users_assigned child table data and tags
         for issue in issues:
             # Get child table data for custom_users_assigned
             user_assignments = frappe.db.get_all(
@@ -56,6 +56,20 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             )
             
             issue["custom_users_assigned"] = user_assignments
+            
+            # Get tags for this issue
+            tags = frappe.db.get_all(
+                "Tag Link",
+                filters={
+                    "document_type": "Issue",
+                    "document_name": issue.name
+                },
+                fields=["tag"],
+                order_by="creation asc"
+            )
+            
+            # Convert tags to a simple list of tag names
+            issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
         
         return issues
         
@@ -125,6 +139,20 @@ def get_single_issue_with_assignments(issue_name):
         
         issue_data["custom_users_assigned"] = user_assignments
         
+        # Get tags for this issue
+        tags = frappe.db.get_all(
+            "Tag Link",
+            filters={
+                "document_type": "Issue",
+                "document_name": issue_name
+            },
+            fields=["tag"],
+            order_by="creation asc"
+        )
+        
+        # Convert tags to a simple list of tag names
+        issue_data["_user_tags"] = [tag.tag for tag in tags] if tags else []
+        
         return issue_data
         
     except frappe.DoesNotExistError:
@@ -134,3 +162,57 @@ def get_single_issue_with_assignments(issue_name):
     except Exception as e:
         frappe.log_error(f"Error in get_single_issue_with_assignments: {str(e)}")
         frappe.throw(_("Failed to fetch single issue: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def get_tag_colors():
+    """
+    Get all tag colors from Tag Categories
+    Returns a mapping of tag names to their colors
+    """
+    try:
+        # Check if Tag Category doctype exists
+        if not frappe.db.exists("DocType", "Tag Category"):
+            frappe.log_error("Tag Category doctype does not exist")
+            return {}
+        
+        # Get all Tag Categories with their colors
+        tag_categories = frappe.get_all(
+            "Tag Category",
+            fields=["tag_category_name", "category_color"],
+            limit_page_length=0
+        )
+        
+        tag_color_map = {}
+        
+        # For each category, get all tags that belong to it
+        for category in tag_categories:
+            if category.get("category_color"):
+                try:
+                    # Check if the custom_tag_category field exists on Tag doctype
+                    if frappe.db.has_column("Tag", "custom_tag_category"):
+                        # Get all tags in this category
+                        tags_in_category = frappe.get_all(
+                            "Tag",
+                            fields=["name"],
+                            filters={"custom_tag_category": category.tag_category_name},
+                            limit_page_length=0
+                        )
+                        
+                        # Map each tag to the category color
+                        for tag in tags_in_category:
+                            tag_color_map[tag.name] = category.category_color
+                    
+                    # Also map the category name itself as a tag (for direct matching)
+                    tag_color_map[category.tag_category_name] = category.category_color
+                    
+                except Exception as inner_e:
+                    frappe.log_error(f"Error processing category {category.tag_category_name}: {str(inner_e)}")
+                    continue
+        
+        return tag_color_map
+        
+    except Exception as e:
+        frappe.log_error(f"Error in get_tag_colors: {str(e)}")
+        # Return empty dict instead of raising exception to prevent frontend errors
+        return {}

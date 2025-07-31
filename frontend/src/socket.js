@@ -7,8 +7,9 @@ export function initSocket() {
 		const host = window.location.hostname
 		const siteName = window.site_name || 'force.site'
 		
-		// Use Frappe's standard socketio URL pattern
-		const socketUrl = `http://${host}:${socketio_port}/${siteName}`
+		// Use appropriate protocol based on current page protocol
+		const protocol = window.location.protocol === 'https:' ? 'https' : 'http'
+		const socketUrl = `${protocol}://${host}:${socketio_port}/${siteName}`
 
 		socket = io(socketUrl, {
 			withCredentials: true,

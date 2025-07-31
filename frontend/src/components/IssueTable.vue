@@ -1,161 +1,188 @@
 <template>
-  <div class="bg-white rounded-lg shadow-sm border">
-    <div class="px-6 py-4 border-b border-gray-200">
-      <h3 class="text-lg font-medium text-gray-900">Issues</h3>
-    </div>
+	<div class="bg-white rounded-lg shadow-sm border">
+		<div class="px-6 py-4 border-b border-gray-200">
+			<h3 class="text-lg font-medium text-gray-900">Issues</h3>
+		</div>
 
-    <!-- Loading state -->
-    <div v-if="loading" class="px-6 py-12 text-center text-gray-500">
-      <div class="flex items-center justify-center">
-        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-        <span class="ml-2">Loading issues...</span>
-      </div>
-    </div>
+		<!-- Loading state -->
+		<div v-if="loading" class="px-6 py-12 text-center text-gray-500">
+			<div class="flex items-center justify-center">
+				<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+				<span class="ml-2">Loading issues...</span>
+			</div>
+		</div>
 
-    <!-- ListView -->
-    <ListView v-else :columns="columns" :rows="transformedIssues" row-key="name" :options="listOptions"
-      @update:selections="handleSelections">
+		<!-- ListView -->
+		<ListView v-else :columns="columns" :rows="transformedIssues" row-key="name" :options="listOptions"
+			@update:selections="handleSelections">
 
-      <ListHeader>
-        <ListHeaderItem v-for="column in columns" :key="column.key" :item="column">
-          <template v-if="column.icon" #prefix="{ item }">
-            <FeatherIcon :name="item.icon" class="h-4 w-4" />
-          </template>
-          
-          <!-- Sort indicator for sortable columns -->
-          <template v-if="column.sortable" #suffix>
-            <button 
-              @click="handleColumnSort(column.key)"
-              class="ml-2 p-1 rounded hover:bg-gray-100 transition-colors"
-              :class="getSortButtonClass(column.key)"
-            >
-              <FeatherIcon 
-                :name="getSortIcon(column.key)" 
-                class="h-3 w-3"
-                :class="getSortIconClass(column.key)"
-              />
-            </button>
-          </template>
-        </ListHeaderItem>
-      </ListHeader>
+			<ListHeader>
+				<ListHeaderItem v-for="column in columns" :key="column.key" :item="column">
+					<template v-if="column.icon" #prefix="{ item }">
+						<FeatherIcon :name="item.icon" class="h-4 w-4" />
+					</template>
 
-      <ListRows>
-        <ListRow v-for="issue in transformedIssues" :key="issue.name" :row="issue">
-          <template #default="{ column, item }">
-            <ListRowItem :item="item" :align="column.align">
-              <template #prefix>
-                <!-- Avatar for assignee column -->
-                <Avatar v-if="column.key === 'raised_by'" :size="'sm'" :label="getInitials(issue.raised_by)"
-                  class="mr-3" />
-              </template>
+					<!-- Sort indicator for sortable columns -->
+					<template v-if="column.sortable" #suffix>
+						<button @click="handleColumnSort(column.key)"
+							class="ml-2 p-1 rounded hover:bg-gray-100 transition-colors"
+							:class="getSortButtonClass(column.key)">
+							<FeatherIcon :name="getSortIcon(column.key)" class="h-3 w-3"
+								:class="getSortIconClass(column.key)" />
+						</button>
+					</template>
+				</ListHeaderItem>
+			</ListHeader>
 
-              <!-- Custom content for specific columns only -->
-              <template #default>
-                <!-- Issue ID with link -->
-                <a v-if="column.key === 'name'" href="#"
-                  class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                  @click.prevent="handleIssueClick(issue)">
-                  {{ formatIssueId(item) }}
-                </a>
+			<ListRows>
+				<ListRow v-for="issue in transformedIssues" :key="issue.name" :row="issue">
+					<template #default="{ column, item }">
+						<ListRowItem :item="item" :align="column.align">
+							<template #prefix>
+								<!-- Avatar for assignee column -->
+								<Avatar v-if="column.key === 'raised_by'" :size="'sm'"
+									:label="getInitials(issue.raised_by)" class="mr-3" />
+							</template>
 
-                <!-- Title with description -->
-                <div v-else-if="column.key === 'subject'" class="max-w-xs">
-                  <div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}</div>
-                  <div v-if="issue.description" class="text-gray-500 text-xs mt-1 truncate" :title="issue.description">
-                    {{ stripHtml(issue.description) }}
-                  </div>
-                </div>
+							<!-- Custom content for specific columns only -->
+							<template #default>
+								<!-- Issue ID with link -->
+								<a v-if="column.key === 'name'" href="#"
+									class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+									@click.prevent="handleIssueClick(issue)">
+									{{ formatIssueId(item) }}
+								</a>
 
-                <!-- Assignee email with truncation -->
-                <span v-else-if="column.key === 'raised_by'" class="text-sm font-medium text-gray-900 truncate block"
-                  :title="item || '-'">
-                  {{ item || '-' }}
-                </span>
+								<!-- Title with description -->
+								<div v-else-if="column.key === 'subject'" class="max-w-xs">
+									<div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}</div>
+									<div v-if="issue.description" class="text-gray-500 text-xs mt-1 truncate"
+										:title="issue.description">
+										{{ stripHtml(issue.description) }}
+									</div>
+								</div>
 
-                <!-- Assigned Users as pills with hover popup -->
-                <div v-else-if="column.key === 'custom_users_assigned'" class="flex flex-wrap gap-1">
-                  <template v-if="issue.custom_users_assigned && issue.custom_users_assigned.length > 0">
-                    <div v-for="user in issue.custom_users_assigned.filter(u => u.user_assigned)" :key="user.name || user"
-                      class="relative inline-block">
-                      <span
-                        class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 cursor-pointer hover:bg-blue-200 transition-colors"
-                        @mouseenter="showUserPopup($event, user)" @mouseleave="hideUserPopup">
-                        {{ getInitials(user.user_assigned) }}
-                      </span>
-                    </div>
-                  </template>
-                  <span v-else class="text-gray-400 text-sm">-</span>
-                </div>
+								<!-- Assignee email with truncation -->
+								<span v-else-if="column.key === 'raised_by'"
+									class="text-sm font-medium text-gray-900 truncate block" :title="item || '-'">
+									{{ item || '-' }}
+								</span>
 
-                <!-- Project -->
-                <span v-else-if="column.key === 'project'">{{ item || '-' }}</span>
+								<!-- Assigned Users as pills with hover popup -->
+								<div v-else-if="column.key === 'custom_users_assigned'" class="flex flex-wrap gap-1">
+									<template
+										v-if="issue.custom_users_assigned && issue.custom_users_assigned.length > 0">
+										<div v-for="user in issue.custom_users_assigned.filter(u => u.user_assigned)"
+											:key="user.name || user" class="relative inline-block">
+											<span
+												class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 cursor-pointer hover:bg-blue-200 transition-colors"
+												@mouseenter="showUserPopup($event, user)" @mouseleave="hideUserPopup">
+												{{ getInitials(user.user_assigned) }}
+											</span>
+										</div>
+									</template>
+									<span v-else class="text-gray-400 text-sm">-</span>
+								</div>
 
-                <!-- Tags -->
-                <IssueTypeBadge v-else-if="column.key === 'issue_type'" :issueType="item" />
+								<!-- Tags -->
+								<div v-else-if="column.key === '_user_tags'" 
+									class="flex items-center gap-1 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
+									@mouseenter="showTagsPopupFn($event, issue._user_tags)" 
+									@mouseleave="hideTagsPopupFn">
+									<template v-if="issue._user_tags && issue._user_tags.length > 0">
+										<!-- Show first tag, truncated if needed -->
+										<span 
+											:style="getTagStyle(issue._user_tags[0])"
+											class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border transition-colors max-w-16"
+											:title="issue._user_tags[0]">
+											<span class="truncate">{{ issue._user_tags[0] }}</span>
+										</span>
+										<!-- Always show +X more if there are more tags -->
+										<span v-if="issue._user_tags.length > 1"
+											class="inline-flex items-center px-1 py-1 text-xs font-medium text-gray-500">
+											+{{ issue._user_tags.length - 1 }}
+										</span>
+									</template>
+									<span v-else class="text-gray-400 text-sm">-</span>
+								</div>
 
-                <!-- Created At with date and time -->
-                <div v-else-if="column.key === 'creation'" class="flex flex-col">
-                  <span>{{ formatDate(item) }}</span>
-                  <span class="text-xs text-gray-400">{{ formatTime(item) }}</span>
-                </div>
+								<!-- Created At with date and time -->
+								<div v-else-if="column.key === 'creation'" class="flex flex-col">
+									<span>{{ formatDate(item) }}</span>
+									<span class="text-xs text-gray-400">{{ formatTime(item) }}</span>
+								</div>
 
-                <!-- Status badge -->
-                <span v-else-if="column.key === 'status'"
-                  :class="getStatusBadgeClass(issue.status?.label || issue.status || 'New')"
-                  class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
-                  {{ issue.status?.label || issue.status || 'New' }}
-                </span>
+								<!-- Status badge -->
+								<span v-else-if="column.key === 'status'"
+									:class="getStatusBadgeClass(issue.status?.label || issue.status || 'New')"
+									class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
+									{{ issue.status?.label || issue.status || 'New' }}
+								</span>
 
-                <!-- Priority badge -->
-                <div v-else-if="column.key === 'priority'" class="flex items-center gap-2">
-                  <div :class="getPriorityIndicatorClass(issue.priority?.label || issue.priority || 'Medium')"
-                    class="w-2 h-2 rounded-full"></div>
-                  <span :class="getPriorityBadgeClass(issue.priority?.label || issue.priority || 'Medium')"
-                    class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
-                    {{ issue.priority?.label || issue.priority || 'Medium' }}
-                  </span>
-                </div>
 
-                <!-- Default fallback for other columns -->
-                <span v-else>{{ item }}</span>
-              </template>
-            </ListRowItem>
-          </template>
-        </ListRow>
-      </ListRows>
 
-      <ListSelectBanner>
-        <template #actions="{ unselectAll }">
-          <div class="flex gap-2">
-            <Button variant="ghost" label="Delete" />
-            <Button variant="ghost" label="Unselect all" @click="unselectAll" />
-          </div>
-        </template>
-      </ListSelectBanner>
+								<!-- Default fallback for other columns -->
+								<span v-else>{{ item }}</span>
+							</template>
+						</ListRowItem>
+					</template>
+				</ListRow>
+			</ListRows>
 
-    </ListView>
+			<ListSelectBanner>
+				<template #actions="{ unselectAll }">
+					<div class="flex gap-2">
+						<Button variant="ghost" label="Delete" />
+						<Button variant="ghost" label="Unselect all" @click="unselectAll" />
+					</div>
+				</template>
+			</ListSelectBanner>
 
-    <!-- User Popup -->
-    <div v-if="showPopup && popupUser"
-      class="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-48" :style="{
-        left: popupPosition.x + 'px',
-        top: popupPosition.y + 'px',
-        transform: 'translateX(-50%) translateY(-100%)'
-      }">
-      <div class="text-sm">
-        <div class="font-semibold text-gray-900 mb-1">
-          {{ popupUser.user_assigned || 'Unknown User' }}
-        </div>
-        <div class="text-gray-600 flex items-center gap-1">
-          <span class="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
-          {{ popupUser.team || 'No Team' }}
-        </div>
-        <div class="text-xs text-gray-500 mt-1">
-          Assigned: {{ formatDate(popupUser.assigned_date) }}
-        </div>
-      </div>
-    </div>
-  </div>
+		</ListView>
+
+		<!-- User Popup -->
+		<div v-if="showPopup && popupUser"
+			class="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-48" :style="{
+				left: popupPosition.x + 'px',
+				top: popupPosition.y + 'px',
+				transform: 'translateX(-50%) translateY(-100%)'
+			}">
+			<div class="text-sm">
+				<div class="font-semibold text-gray-900 mb-1">
+					{{ popupUser.user_assigned || 'Unknown User' }}
+				</div>
+				<div class="text-gray-600 flex items-center gap-1">
+					<span class="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+					{{ popupUser.team || 'No Team' }}
+				</div>
+				<div class="text-xs text-gray-500 mt-1">
+					Assigned: {{ formatDate(popupUser.assigned_date) }}
+				</div>
+			</div>
+		</div>
+
+		<!-- Tags Popup -->
+		<div v-if="showTagsPopup && tagsPopupData"
+			class="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-48 max-w-xs" :style="{
+				left: tagsPopupPosition.x + 'px',
+				top: tagsPopupPosition.y + 'px',
+				transform: 'translateX(-50%) translateY(-100%)'
+			}">
+			<div class="text-sm">
+				<div class="font-semibold text-gray-900 mb-2">All Tags</div>
+				<div class="flex flex-wrap gap-1">
+					<span 
+						v-for="tag in tagsPopupData" 
+						:key="tag"
+						:style="getTagStyle(tag)"
+						class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border"
+					>
+						{{ tag }}
+					</span>
+				</div>
+			</div>
+		</div>
+	</div>
 </template>
 
 <script>
@@ -167,6 +194,7 @@ import ListRowItem from "frappe-ui/src/components/ListView/ListRowItem.vue"
 import ListRows from "frappe-ui/src/components/ListView/ListRows.vue"
 import ListSelectBanner from "frappe-ui/src/components/ListView/ListSelectBanner.vue"
 import { computed, ref } from "vue"
+import { getTagColor } from "../data/issues"
 
 // Enhanced status badge component with custom status values
 const StatusBadge = {
@@ -239,43 +267,7 @@ const PriorityBadge = {
 	components: { Badge },
 }
 
-// Issue type badge component for tags display
-const IssueTypeBadge = {
-	props: ["issueType"],
-	template: `
-    <div v-if="issueType" class="flex items-center">
-      <Badge :label="issueType" :theme="issueTypeTheme" variant="subtle" />
-    </div>
-    <span v-else class="text-gray-400 text-sm">-</span>
-  `,
-	computed: {
-		issueTypeTheme() {
-			const type = this.issueType
-			if (!type) return "gray"
 
-			// Color coding based on common issue types
-			const typeThemes = {
-				Bug: "red",
-				Feature: "blue",
-				Enhancement: "green",
-				Task: "purple",
-				Support: "orange",
-				Question: "yellow",
-				Documentation: "gray",
-			}
-
-			// Check for partial matches if exact match not found
-			for (const [key, theme] of Object.entries(typeThemes)) {
-				if (type.toLowerCase().includes(key.toLowerCase())) {
-					return theme
-				}
-			}
-
-			return "gray" // Default theme
-		},
-	},
-	components: { Badge },
-}
 
 export default {
 	components: {
@@ -292,7 +284,6 @@ export default {
 		ListSelectBanner,
 		StatusBadge,
 		PriorityBadge,
-		IssueTypeBadge,
 	},
 	props: {
 		issues: {
@@ -318,6 +309,11 @@ export default {
 		const showPopup = ref(false)
 		const popupUser = ref(null)
 		const popupPosition = ref({ x: 0, y: 0 })
+
+		// Tags popup state management
+		const showTagsPopup = ref(false)
+		const tagsPopupPosition = ref({ x: 0, y: 0 })
+		const tagsPopupData = ref(null)
 
 		// Helper methods
 		const getInitials = (name) => {
@@ -453,12 +449,7 @@ export default {
 				width: "160px",
 				sortable: true,
 			},
-			{
-				label: "Priority",
-				key: "priority",
-				width: "130px",
-				sortable: true,
-			},
+
 			{
 				label: "Assignee",
 				key: "raised_by",
@@ -471,16 +462,11 @@ export default {
 				width: "180px",
 				sortable: false,
 			},
-			{
-				label: "Project",
-				key: "project",
-				width: "120px",
-				sortable: true,
-			},
+
 			{
 				label: "Tags",
-				key: "issue_type",
-				width: "100px",
+				key: "_user_tags",
+				width: "120px",
 				sortable: false,
 			},
 			{
@@ -609,6 +595,24 @@ export default {
 			popupUser.value = null
 		}
 
+		// Tags popup functions
+		const showTagsPopupFn = (event, tags) => {
+			if (!tags || tags.length === 0) return
+			
+			const rect = event.target.getBoundingClientRect()
+			tagsPopupPosition.value = {
+				x: rect.left + rect.width / 2,
+				y: rect.top - 10,
+			}
+			tagsPopupData.value = tags
+			showTagsPopup.value = true
+		}
+
+		const hideTagsPopupFn = () => {
+			showTagsPopup.value = false
+			tagsPopupData.value = null
+		}
+
 		// Sorting functionality
 		const handleColumnSort = (field) => {
 			let newDirection = "asc"
@@ -646,6 +650,39 @@ export default {
 			return "" // Default button styling
 		}
 
+		// Tag styling function
+		const getTagStyle = (tag) => {
+			// Get tag color from API
+			const hexColor = getTagColor(tag)
+
+			if (hexColor) {
+				// Convert hex color to RGB for background and text colors
+				const hex = hexColor.replace('#', '')
+				const r = parseInt(hex.substr(0, 2), 16)
+				const g = parseInt(hex.substr(2, 2), 16)
+				const b = parseInt(hex.substr(4, 2), 16)
+
+				// Create background color (lighter version with opacity)
+				const bgColor = `rgba(${r}, ${g}, ${b}, 0.1)`
+
+				// Create text color (darker version for contrast)
+				const textColor = `rgb(${Math.max(r - 50, 0)}, ${Math.max(g - 50, 0)}, ${Math.max(b - 50, 0)})`
+
+				return {
+					backgroundColor: bgColor,
+					color: textColor,
+					borderColor: textColor
+				}
+			}
+
+			// Fallback to default styling
+			return {
+				backgroundColor: '#f3f4f6',
+				color: '#374151',
+				borderColor: '#d1d5db'
+			}
+		}
+
 		return {
 			columns,
 			listOptions,
@@ -671,6 +708,12 @@ export default {
 			getSortIcon,
 			getSortIconClass,
 			getSortButtonClass,
+			getTagStyle,
+			showTagsPopup,
+			tagsPopupPosition,
+			tagsPopupData,
+			showTagsPopupFn,
+			hideTagsPopupFn,
 		}
 	},
 }

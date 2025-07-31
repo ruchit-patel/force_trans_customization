@@ -187,9 +187,26 @@ export function getStatusOptions() {
 	]
 }
 
+// Resource for fetching tag colors from Tag Categories
+export const tagColorsResource = createResource({
+	url: "force_trans_customization.api.issues.get_tag_colors",
+	cache: "TagColors", // Cache for 10 minutes
+	onError(error) {
+		console.error("Failed to fetch tag colors:", error)
+	},
+	auto: true, // Auto-fetch on component mount
+})
+
+// Helper function to get tag color
+export function getTagColor(tagName) {
+	const tagColors = tagColorsResource.data || {}
+	return tagColors[tagName] || null
+}
+
 // Helper function to refresh all filter options
 export function refreshFilterOptions() {
 	issuePriorityResource.reload()
 	issueTypeResource.reload()
 	projectResource.reload()
+	tagColorsResource.reload()
 }
