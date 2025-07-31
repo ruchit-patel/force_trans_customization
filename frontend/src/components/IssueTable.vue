@@ -1,144 +1,148 @@
 <template>
 	<div class="bg-white rounded-lg shadow-sm border">
-		<div class="px-6 py-4 border-b border-gray-200">
+		<div class="px-8 py-6 border-b border-gray-200">
 			<h3 class="text-lg font-medium text-gray-900">Issues</h3>
 		</div>
 
 		<!-- Loading state -->
-		<div v-if="loading" class="px-6 py-12 text-center text-gray-500">
+		<div v-if="loading" class="px-8 py-16 text-center text-gray-500">
 			<div class="flex items-center justify-center">
 				<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-				<span class="ml-2">Loading issues...</span>
+				<span class="ml-3">Loading issues...</span>
 			</div>
 		</div>
 
 		<!-- ListView -->
-		<ListView v-else :columns="columns" :rows="transformedIssues" row-key="name" :options="listOptions"
-			@update:selections="handleSelections">
+		<div v-else class="px-4 py-2">
+			<ListView :columns="columns" :rows="transformedIssues" row-key="name" :options="listOptions"
+				@update:selections="handleSelections">
 
-			<ListHeader>
-				<ListHeaderItem v-for="column in columns" :key="column.key" :item="column">
-					<template v-if="column.icon" #prefix="{ item }">
-						<FeatherIcon :name="item.icon" class="h-4 w-4" />
-					</template>
+				<ListHeader>
+					<ListHeaderItem v-for="column in columns" :key="column.key" :item="column" class="px-2 py-4">
+						<template v-if="column.icon" #prefix="{ item }">
+							<FeatherIcon :name="item.icon" class="h-4 w-4" />
+						</template>
 
-					<!-- Sort indicator for sortable columns -->
-					<template v-if="column.sortable" #suffix>
-						<button @click="handleColumnSort(column.key)"
-							class="ml-2 p-1 rounded hover:bg-gray-100 transition-colors"
-							:class="getSortButtonClass(column.key)">
-							<FeatherIcon :name="getSortIcon(column.key)" class="h-3 w-3"
-								:class="getSortIconClass(column.key)" />
-						</button>
-					</template>
-				</ListHeaderItem>
-			</ListHeader>
+						<!-- Sort indicator for sortable columns -->
+						<template v-if="column.sortable" #suffix>
+							<button @click="handleColumnSort(column.key)"
+								class="ml-2 p-1 rounded hover:bg-gray-100 transition-colors"
+								:class="getSortButtonClass(column.key)">
+								<FeatherIcon :name="getSortIcon(column.key)" class="h-3 w-3"
+									:class="getSortIconClass(column.key)" />
+							</button>
+						</template>
+					</ListHeaderItem>
+				</ListHeader>
 
-			<ListRows>
-				<ListRow v-for="issue in transformedIssues" :key="issue.name" :row="issue">
-					<template #default="{ column, item }">
-						<ListRowItem :item="item" :align="column.align">
-							<template #prefix>
-								<!-- Avatar for assignee column -->
-								<Avatar v-if="column.key === 'raised_by'" :size="'sm'"
-									:label="getInitials(issue.raised_by)" class="mr-3" />
-							</template>
+				<ListRows>
+					<ListRow v-for="issue in transformedIssues" :key="issue.name" :row="issue">
+						<template #default="{ column, item }">
+							<ListRowItem :item="item" :align="column.align" class="px-2 py-3">
+								<template #prefix>
+									<!-- Avatar for assignee column -->
+									<Avatar v-if="column.key === 'raised_by'" :size="'sm'"
+										:label="getInitials(issue.raised_by)" class="mr-3" />
+								</template>
 
-							<!-- Custom content for specific columns only -->
-							<template #default>
-								<!-- Issue ID with link -->
-								<a v-if="column.key === 'name'" href="#"
-									class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-									@click.prevent="handleIssueClick(issue)">
-									{{ formatIssueId(item) }}
-								</a>
+								<!-- Custom content for specific columns only -->
+								<template #default>
+									<!-- Issue ID with link -->
+									<a v-if="column.key === 'name'" href="#"
+										class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+										@click.prevent="handleIssueClick(issue)">
+										{{ formatIssueId(item) }}
+									</a>
 
-								<!-- Title with description -->
-								<div v-else-if="column.key === 'subject'" class="max-w-xs">
-									<div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}</div>
-									<div v-if="issue.description" class="text-gray-500 text-xs mt-1 truncate"
-										:title="issue.description">
-										{{ stripHtml(issue.description) }}
-									</div>
-								</div>
-
-								<!-- Assignee email with truncation -->
-								<span v-else-if="column.key === 'raised_by'"
-									class="text-sm font-medium text-gray-900 truncate block" :title="item || '-'">
-									{{ item || '-' }}
-								</span>
-
-								<!-- Assigned Users as pills with hover popup -->
-								<div v-else-if="column.key === 'custom_users_assigned'" class="flex flex-wrap gap-1">
-									<template
-										v-if="issue.custom_users_assigned && issue.custom_users_assigned.length > 0">
-										<div v-for="user in issue.custom_users_assigned.filter(u => u.user_assigned)"
-											:key="user.name || user" class="relative inline-block">
-											<span
-												class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 cursor-pointer hover:bg-blue-200 transition-colors"
-												@mouseenter="showUserPopup($event, user)" @mouseleave="hideUserPopup">
-												{{ getInitials(user.user_assigned) }}
-											</span>
+									<!-- Title with description -->
+									<div v-else-if="column.key === 'subject'" class="max-w-xs">
+										<div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}
 										</div>
-									</template>
-									<span v-else class="text-gray-400 text-sm">-</span>
-								</div>
+										<div v-if="issue.description" class="text-gray-500 text-xs mt-1 truncate"
+											:title="issue.description">
+											{{ stripHtml(issue.description) }}
+										</div>
+									</div>
 
-								<!-- Tags -->
-								<div v-else-if="column.key === '_user_tags'" 
-									class="flex items-center gap-1 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
-									@mouseenter="showTagsPopupFn($event, issue._user_tags)" 
-									@mouseleave="hideTagsPopupFn">
-									<template v-if="issue._user_tags && issue._user_tags.length > 0">
-										<!-- Show first tag, truncated if needed -->
-										<span 
-											:style="getTagStyle(issue._user_tags[0])"
-											class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border transition-colors max-w-16"
-											:title="issue._user_tags[0]">
-											<span class="truncate">{{ issue._user_tags[0] }}</span>
-										</span>
-										<!-- Always show +X more if there are more tags -->
-										<span v-if="issue._user_tags.length > 1"
-											class="inline-flex items-center px-1 py-1 text-xs font-medium text-gray-500">
-											+{{ issue._user_tags.length - 1 }}
-										</span>
-									</template>
-									<span v-else class="text-gray-400 text-sm">-</span>
-								</div>
+									<!-- Assignee email with truncation -->
+									<span v-else-if="column.key === 'raised_by'"
+										class="text-sm font-medium text-gray-900 truncate block" :title="item || '-'">
+										{{ item || '-' }}
+									</span>
 
-								<!-- Created At with date and time -->
-								<div v-else-if="column.key === 'creation'" class="flex flex-col">
-									<span>{{ formatDate(item) }}</span>
-									<span class="text-xs text-gray-400">{{ formatTime(item) }}</span>
-								</div>
+									<!-- Assigned Users as pills with hover popup -->
+									<div v-else-if="column.key === 'custom_users_assigned'"
+										class="flex flex-wrap gap-1">
+										<template
+											v-if="issue.custom_users_assigned && issue.custom_users_assigned.length > 0">
+											<div v-for="user in issue.custom_users_assigned.filter(u => u.user_assigned)"
+												:key="user.name || user" class="relative inline-block">
+												<span
+													class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 cursor-pointer hover:bg-blue-200 transition-colors"
+													@mouseenter="showUserPopup($event, user)"
+													@mouseleave="hideUserPopup">
+													{{ getInitials(user.user_assigned) }}
+												</span>
+											</div>
+										</template>
+										<span v-else class="text-gray-400 text-sm">-</span>
+									</div>
 
-								<!-- Status badge -->
-								<span v-else-if="column.key === 'status'"
-									:class="getStatusBadgeClass(issue.status?.label || issue.status || 'New')"
-									class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
-									{{ issue.status?.label || issue.status || 'New' }}
-								</span>
+									<!-- Tags -->
+									<div v-else-if="column.key === '_user_tags'"
+										class="flex items-center gap-1 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
+										@mouseenter="showTagsPopupFn($event, issue._user_tags)"
+										@mouseleave="hideTagsPopupFn">
+										<template v-if="issue._user_tags && issue._user_tags.length > 0">
+											<!-- Show first tag, truncated if needed -->
+											<span :style="getTagStyle(issue._user_tags[0])"
+												class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border transition-colors max-w-16"
+												:title="issue._user_tags[0]">
+												<span class="truncate">{{ issue._user_tags[0] }}</span>
+											</span>
+											<!-- Always show +X more if there are more tags -->
+											<span v-if="issue._user_tags.length > 1"
+												class="inline-flex items-center px-1 py-1 text-xs font-medium text-gray-500">
+												+{{ issue._user_tags.length - 1 }}
+											</span>
+										</template>
+										<span v-else class="text-gray-400 text-sm">-</span>
+									</div>
+
+									<!-- Created At with date and time -->
+									<div v-else-if="column.key === 'creation'" class="flex flex-col">
+										<span>{{ formatDate(item) }}</span>
+										<span class="text-xs text-gray-400">{{ formatTime(item) }}</span>
+									</div>
+
+									<!-- Status badge -->
+									<span v-else-if="column.key === 'status'"
+										:class="getStatusBadgeClass(issue.status?.label || issue.status || 'New')"
+										class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
+										{{ issue.status?.label || issue.status || 'New' }}
+									</span>
 
 
 
-								<!-- Default fallback for other columns -->
-								<span v-else>{{ item }}</span>
-							</template>
-						</ListRowItem>
+									<!-- Default fallback for other columns -->
+									<span v-else>{{ item }}</span>
+								</template>
+							</ListRowItem>
+						</template>
+					</ListRow>
+				</ListRows>
+
+				<ListSelectBanner>
+					<template #actions="{ unselectAll }">
+						<div class="flex gap-2">
+							<Button variant="ghost" label="Delete" />
+							<Button variant="ghost" label="Unselect all" @click="unselectAll" />
+						</div>
 					</template>
-				</ListRow>
-			</ListRows>
+				</ListSelectBanner>
 
-			<ListSelectBanner>
-				<template #actions="{ unselectAll }">
-					<div class="flex gap-2">
-						<Button variant="ghost" label="Delete" />
-						<Button variant="ghost" label="Unselect all" @click="unselectAll" />
-					</div>
-				</template>
-			</ListSelectBanner>
-
-		</ListView>
+			</ListView>
+		</div>
 
 		<!-- User Popup -->
 		<div v-if="showPopup && popupUser"
@@ -171,12 +175,8 @@
 			<div class="text-sm">
 				<div class="font-semibold text-gray-900 mb-2">All Tags</div>
 				<div class="flex flex-wrap gap-1">
-					<span 
-						v-for="tag in tagsPopupData" 
-						:key="tag"
-						:style="getTagStyle(tag)"
-						class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border"
-					>
+					<span v-for="tag in tagsPopupData" :key="tag" :style="getTagStyle(tag)"
+						class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border">
 						{{ tag }}
 					</span>
 				</div>
@@ -482,7 +482,7 @@ export default {
 			showTooltip: true,
 			selectable: true,
 			resizeColumn: false,
-			rowHeight: 60,
+			rowHeight: 70,
 			emptyState: {
 				title: "No issues found",
 				description: "Try adjusting your search or filter criteria",
@@ -598,7 +598,7 @@ export default {
 		// Tags popup functions
 		const showTagsPopupFn = (event, tags) => {
 			if (!tags || tags.length === 0) return
-			
+
 			const rect = event.target.getBoundingClientRect()
 			tagsPopupPosition.value = {
 				x: rect.left + rect.width / 2,

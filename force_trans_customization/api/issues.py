@@ -216,3 +216,236 @@ def get_tag_colors():
         frappe.log_error(f"Error in get_tag_colors: {str(e)}")
         # Return empty dict instead of raising exception to prevent frontend errors
         return {}
+
+
+@frappe.whitelist()
+def issue_search(search_query="", limit=8):
+    """
+    Search issues for autocomplete suggestions
+    Same structure as get_issues_with_assignments but for search suggestions only
+    """
+    try:
+        # Convert string parameters
+        limit = int(limit)
+        
+        # Return empty if query is too short
+        if not search_query or len(search_query.strip()) < 2:
+            return []
+        
+        search_query = search_query.strip()
+        
+        # Base fields to fetch from Issue doctype - same as get_issues_with_assignments
+        fields = [
+            "name",
+            "subject", 
+            "status",
+            "priority",
+            "raised_by",
+            "customer",
+            "project",
+            "issue_type",
+            "creation",
+            "modified",
+            "owner",
+            "description"
+        ]
+        
+        # Use raw SQL query for better OR condition handling
+        search_pattern = f"%{search_query}%"
+        
+        # Build the SQL query with proper OR conditions
+        sql_query = """
+            SELECT name, subject, status, priority, raised_by, customer, project, 
+                   issue_type, creation, modified, owner, description
+            FROM `tabIssue`
+            WHERE (
+                name LIKE %(search_pattern)s OR
+                subject LIKE %(search_pattern)s OR
+                customer LIKE %(search_pattern)s OR
+                raised_by LIKE %(search_pattern)s
+            )
+            ORDER BY modified DESC
+            LIMIT %(limit)s
+        """
+        
+        # Execute the query
+        issues = frappe.db.sql(sql_query, {
+            'search_pattern': search_pattern,
+            'limit': limit
+        }, as_dict=True)
+        
+        # For each issue, fetch the custom_users_assigned child table data and tags
+        # Same structure as get_issues_with_assignments
+        for issue in issues:
+            # Get child table data for custom_users_assigned
+            user_assignments = frappe.db.get_all(
+                "Team User Assignment",
+                filters={"parent": issue.name},
+                fields=["*"],  # Get all fields to ensure user_assigned is included
+                order_by="idx asc"  # Order by idx to maintain the order from the form
+            )
+            
+            issue["custom_users_assigned"] = user_assignments
+            
+            # Get tags for this issue
+            tags = frappe.db.get_all(
+                "Tag Link",
+                filters={
+                    "document_type": "Issue",
+                    "document_name": issue.name
+                },
+                fields=["tag"],
+                order_by="creation asc"
+            )
+            
+            # Convert tags to a simple list of tag names
+            issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
+        
+        return issues
+        
+    except Exception as e:
+        frappe.log_error(f"Error in issue_search: {str(e)}")
+        frappe.throw(_("Failed to search issues: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_length=10, limit_start=0, order_by="creation desc"):
+    """
+    Filter issues based on selected suggestion from search
+    This is called when user clicks on a search suggestion to filter the main table
+    """
+    try:
+        # Convert string parameters to integers
+        limit_page_length = int(limit_page_length)
+        limit_start = int(limit_start)
+        
+        # Build filters based on suggestion type and value
+        filters = {}
+        
+        if suggestion_type == "name":
+            filters["name"] = suggestion_value
+        elif suggestion_type == "subject":
+            filters["subject"] = ["like", f"%{suggestion_value}%"]
+        elif suggestion_type == "customer":
+            filters["customer"] = suggestion_value
+        elif suggestion_type == "raised_by":
+            filters["raised_by"] = suggestion_value
+        elif suggestion_type == "status":
+            filters["status"] = suggestion_value
+        elif suggestion_type == "priority":
+            filters["priority"] = suggestion_value
+        elif suggestion_type == "issue_type":
+            filters["issue_type"] = suggestion_value
+        elif suggestion_type == "project":
+            filters["project"] = suggestion_value
+        else:
+            # Default: search in multiple fields if type is not specified
+            # Use raw SQL for complex OR conditions
+            search_pattern = f"%{suggestion_value}%"
+            sql_query = """
+                SELECT name, subject, status, priority, raised_by, customer, project, 
+                       issue_type, creation, modified, owner, description
+                FROM `tabIssue`
+                WHERE (
+                    name LIKE %(search_pattern)s OR
+                    subject LIKE %(search_pattern)s OR
+                    customer LIKE %(search_pattern)s OR
+                    raised_by LIKE %(search_pattern)s
+                )
+                ORDER BY {order_by}
+                LIMIT %(limit_start)s, %(limit_page_length)s
+            """.format(order_by=order_by)
+            
+            issues = frappe.db.sql(sql_query, {
+                'search_pattern': search_pattern,
+                'limit_start': limit_start,
+                'limit_page_length': limit_page_length
+            }, as_dict=True)
+            
+            # Add child table data and tags for each issue
+            for issue in issues:
+                # Get child table data for custom_users_assigned
+                user_assignments = frappe.db.get_all(
+                    "Team User Assignment",
+                    filters={"parent": issue.name},
+                    fields=["*"],
+                    order_by="idx asc"
+                )
+                issue["custom_users_assigned"] = user_assignments
+                
+                # Get tags for this issue
+                tags = frappe.db.get_all(
+                    "Tag Link",
+                    filters={
+                        "document_type": "Issue",
+                        "document_name": issue.name
+                    },
+                    fields=["tag"],
+                    order_by="creation asc"
+                )
+                issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
+            
+            return issues
+        
+        # For specific field filters, use the existing get_issues_with_assignments logic
+        return get_issues_with_assignments(
+            limit_page_length=limit_page_length,
+            limit_start=limit_start,
+            filters=filters,
+            order_by=order_by
+        )
+        
+    except Exception as e:
+        frappe.log_error(f"Error in filter_issues_by_suggestion: {str(e)}")
+        frappe.throw(_("Failed to filter issues by suggestion: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def get_filtered_issues_count(suggestion_type, suggestion_value):
+    """
+    Get count of filtered issues for pagination
+    """
+    try:
+        # Build filters based on suggestion type and value
+        if suggestion_type == "name":
+            filters = {"name": suggestion_value}
+        elif suggestion_type == "subject":
+            filters = {"subject": ["like", f"%{suggestion_value}%"]}
+        elif suggestion_type == "customer":
+            filters = {"customer": suggestion_value}
+        elif suggestion_type == "raised_by":
+            filters = {"raised_by": suggestion_value}
+        elif suggestion_type == "status":
+            filters = {"status": suggestion_value}
+        elif suggestion_type == "priority":
+            filters = {"priority": suggestion_value}
+        elif suggestion_type == "issue_type":
+            filters = {"issue_type": suggestion_value}
+        elif suggestion_type == "project":
+            filters = {"project": suggestion_value}
+        else:
+            # Default: count with complex OR conditions
+            search_pattern = f"%{suggestion_value}%"
+            count_query = """
+                SELECT COUNT(*) as count
+                FROM `tabIssue`
+                WHERE (
+                    name LIKE %(search_pattern)s OR
+                    subject LIKE %(search_pattern)s OR
+                    customer LIKE %(search_pattern)s OR
+                    raised_by LIKE %(search_pattern)s
+                )
+            """
+            
+            result = frappe.db.sql(count_query, {
+                'search_pattern': search_pattern
+            }, as_dict=True)
+            
+            return result[0].count if result else 0
+        
+        # For specific field filters, use standard count
+        return frappe.db.count("Issue", filters)
+        
+    except Exception as e:
+        frappe.log_error(f"Error in get_filtered_issues_count: {str(e)}")
+        frappe.throw(_("Failed to get filtered issues count: {0}").format(str(e)))

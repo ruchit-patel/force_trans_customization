@@ -13,40 +13,54 @@
     </div>
 
 
-    <div class="flex flex-col sm:flex-row gap-4">
-      <!-- Filter Controls -->
-      <div class="flex gap-2 flex-wrap w-full justify-center">
+    <!-- Filter Controls Section -->
+    <div class="border-t border-gray-200 pt-6">
+      <div class="mb-4">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">Filter Options</h3>
+      </div>
+      
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <!-- Status Filter -->
-        <Select v-model="localFilters.status" :options="statusOptions" placeholder="All Status"
-          @change="handleFilterChange" />
+        <div class="space-y-1">
+          <label class="text-xs font-medium text-gray-600 block">Status</label>
+          <Select v-model="localFilters.status" :options="statusOptions"
+            @change="handleFilterChange" class="w-full" />
+        </div>
 
         <!-- Priority Filter -->
-        <Select v-model="localFilters.priority" :options="priorityOptions" placeholder="All Priority"
-          @change="handleFilterChange" />
+        <div class="space-y-1">
+          <label class="text-xs font-medium text-gray-600 block">Priority</label>
+          <Select v-model="localFilters.priority" :options="priorityOptions"
+            @change="handleFilterChange" class="w-full" />
+        </div>
 
         <!-- Assignee Filter -->
-        <Select v-model="localFilters.assignee" :options="assigneeOptions" placeholder="All Assignees"
-          @change="handleFilterChange" />
+        <div class="space-y-1">
+          <label class="text-xs font-medium text-gray-600 block">Assignee</label>
+          <Select v-model="localFilters.assignee" :options="assigneeOptions"
+            @change="handleFilterChange" class="w-full" />
+        </div>
 
         <!-- Tags Filter (Issue Type) -->
-        <Select v-model="localFilters.tags" :options="tagsOptions" placeholder="All Tags"
-          @change="handleFilterChange" />
+        <div class="space-y-1">
+          <label class="text-xs font-medium text-gray-600 block">Tags</label>
+          <Select v-model="localFilters.tags" :options="tagsOptions"
+            @change="handleFilterChange" class="w-full" />
+        </div>
 
         <!-- Sort By Filter -->
-        <Select v-model="localFilters.sortBy" :options="sortOptions" placeholder="Sort By"
-          @change="handleFilterChange" />
-
-        <!-- New Issue Button -->
-        <Button theme="blue" variant="solid" size="sm">
-          New Issue
-        </Button>
+        <div class="space-y-1">
+          <label class="text-xs font-medium text-gray-600 block">Sort By</label>
+          <Select v-model="localFilters.sortBy" :options="sortOptions" 
+            @change="handleFilterChange" class="w-full" />
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { Button, Select } from "frappe-ui"
+import { Select } from "frappe-ui"
 import { computed, ref, watch, onMounted, onUnmounted } from "vue"
 import CustomSearchBox from "./CustomSearchBox.vue"
 
