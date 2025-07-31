@@ -1,12 +1,12 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useSocket } from '../socket'
-import { reloadIssues, getIssuesCount } from '../data/issues'
+import { reloadIssues, getIssuesCount, issuesResource, fetchSingleIssue, singleIssueResource } from '../data/issues'
 
 /**
  * Composable that implements Frappe's list view realtime update pattern
  * Similar to setup_realtime_updates() in frappe/public/js/frappe/list/list_view.js
  */
-export function useIssueListUpdates() {
+export function useIssueListUpdates(getCurrentParams) {
   const socket = useSocket()
   const pendingDocumentRefreshes = ref([])
   const realtimeEventsSetup = ref(false)
@@ -101,7 +101,7 @@ export function useIssueListUpdates() {
     realtimeEventsSetup.value = false
   }
 
-  const processDocumentRefreshes = () => {
+  const processDocumentRefreshes = async () => {
     if (!pendingDocumentRefreshes.value.length) {
       return
     }
@@ -122,10 +122,9 @@ export function useIssueListUpdates() {
     // Clear pending refreshes
     pendingDocumentRefreshes.value = []
 
-    // Refresh the issue list and count
     try {
-      reloadIssues()
-      getIssuesCount()
+      // Update with current view parameters to maintain user's context
+      await updateIndividualRows(uniqueDocuments)
       
       // Emit a custom event that the parent component can listen to for notifications
       if (window && typeof window.dispatchEvent === 'function') {
@@ -134,8 +133,59 @@ export function useIssueListUpdates() {
         }))
       }
     } catch (error) {
-      console.error('Error refreshing issue list:', error)
+      console.error('Error updating individual rows, falling back to full refresh:', error)
+      // Fallback to full refresh if individual update fails
+      try {
+        await reloadIssues()
+        await getIssuesCount()
+      } catch (fallbackError) {
+        console.error('Error in fallback refresh:', fallbackError)
+      }
     }
+  }
+
+  const updateIndividualRows = async (documentNames) => {
+    // Check if we have current data
+    if (!issuesResource.data || !Array.isArray(issuesResource.data)) {
+      throw new Error('No issues data available')
+    }
+    
+    try {
+      // Get the current pagination and filter parameters from the component
+      let currentParams = {
+        limit_page_length: 10,
+        limit_start: 0,
+        filters: {},
+        order_by: "creation desc"
+      }
+      
+      // If getCurrentParams function is provided, use it to get actual current parameters
+      if (getCurrentParams && typeof getCurrentParams === 'function') {
+        try {
+          const params = getCurrentParams()
+          if (params) {
+            currentParams = { ...currentParams, ...params }
+          }
+        } catch (paramError) {
+          console.warn('Error getting current parameters, using defaults:', paramError)
+        }
+      }
+      
+      // Reload the issues resource with current parameters
+      // This maintains the user's current view (filters, sort, pagination)
+      await issuesResource.reload(currentParams)
+      
+    } catch (error) {
+      console.error('Error during targeted refresh:', error)
+      throw error
+    }
+  }
+
+  const shouldIncludeInCurrentView = (issue) => {
+    // This is a simplified check - you might want to implement more sophisticated
+    // filtering logic based on current filters, search terms, etc.
+    // For now, we'll include all new issues
+    return true
   }
 
   const avoidRealtimeUpdate = () => {

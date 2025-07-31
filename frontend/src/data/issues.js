@@ -65,6 +65,25 @@ export function getIssuesCount(filters = {}) {
 	return issuesCountResource.reload({ filters })
 }
 
+// Resource for fetching a single issue with assignments
+export const singleIssueResource = createResource({
+	url: "force_trans_customization.api.issues.get_single_issue_with_assignments",
+	makeParams(issueName) {
+		return {
+			issue_name: issueName
+		}
+	},
+	onError(error) {
+		console.error("Failed to fetch single issue:", error)
+	},
+	auto: false, // Don't auto-fetch, only fetch when called
+})
+
+// Helper function to fetch a single issue
+export function fetchSingleIssue(issueName) {
+	return singleIssueResource.reload(issueName)
+}
+
 // Resource for fetching Issue Priority options
 export const issuePriorityResource = createResource({
 	url: "frappe.client.get_list",

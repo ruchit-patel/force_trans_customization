@@ -82,3 +82,55 @@ def get_issues_count_with_filters(filters=None):
     except Exception as e:
         frappe.log_error(f"Error in get_issues_count_with_filters: {str(e)}")
         frappe.throw(_("Failed to get issues count: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def get_single_issue_with_assignments(issue_name):
+    """
+    Get a single issue with custom_users_assigned child table data
+    Used for realtime updates to refresh individual rows
+    """
+    try:
+        # Base fields to fetch from Issue doctype
+        fields = [
+            "name",
+            "subject", 
+            "status",
+            "priority",
+            "raised_by",
+            "customer",
+            "project",
+            "issue_type",
+            "creation",
+            "modified",
+            "owner",
+            "description"
+        ]
+        
+        # Get the single issue
+        issue = frappe.get_doc("Issue", issue_name)
+        
+        # Convert to dict with only required fields
+        issue_data = {}
+        for field in fields:
+            issue_data[field] = getattr(issue, field, None)
+        
+        # Get child table data for custom_users_assigned
+        user_assignments = frappe.db.get_all(
+            "Team User Assignment",
+            filters={"parent": issue_name},
+            fields=["*"],  # Get all fields to ensure user_assigned is included
+            order_by="idx asc"  # Order by idx to maintain the order from the form
+        )
+        
+        issue_data["custom_users_assigned"] = user_assignments
+        
+        return issue_data
+        
+    except frappe.DoesNotExistError:
+        # Issue was deleted, return None
+        return None
+        
+    except Exception as e:
+        frappe.log_error(f"Error in get_single_issue_with_assignments: {str(e)}")
+        frappe.throw(_("Failed to fetch single issue: {0}").format(str(e)))

@@ -151,7 +151,15 @@ const {
 	pendingDocumentRefreshes,
 	realtimeEventsSetup,
 	manualRefresh
-} = useIssueListUpdates()
+} = useIssueListUpdates(() => {
+	// Return current parameters for realtime updates
+	return {
+		filters: apiFilters.value,
+		order_by: sortOrder.value,
+		limit_page_length: itemsPerPage.value,
+		limit_start: (currentPage.value - 1) * itemsPerPage.value,
+	}
+})
 
 // Simplified notification system for list updates
 const notifications = ref([])
