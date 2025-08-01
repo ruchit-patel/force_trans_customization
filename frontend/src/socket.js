@@ -20,14 +20,16 @@ export function initSocket() {
 			timeout: 20000
 		}
 
-		if (host.includes('.force-trans.com')) {
+		if (host.includes('.force-trans.com') || host.includes('frappe.cloud')) {
 			// Frappe Cloud configuration
 			socketUrl = `${protocol}://${host}`
 			socketOptions = {
 				...socketOptions,
 				path: '/socket.io/',
 				timeout: 30000, // Increase timeout for cloud
-				transports: ['polling', 'websocket'], // Try polling first for cloud
+				transports: ['websocket', 'polling'], // Try websocket first for cloud
+				forceNew: true, // Force new connection for cloud
+				upgrade: true, // Allow transport upgrades
 			}
 		} else {
 			// Standard Frappe installation with custom socketio port
@@ -40,8 +42,24 @@ export function initSocket() {
 		// Add connection event handlers
 		socket.on('connect', () => {
 			console.log('✅ Socket connected successfully')
+			console.log('🔌 Socket ID:', socket.id)
+			
 			// Subscribe to doctype updates immediately after connection
+			console.log('📡 Subscribing to Issue doctype updates...')
 			socket.emit('doctype_subscribe', 'Issue')
+			
+			// Also try alternative subscription methods for production
+			socket.emit('subscribe', 'Issue')
+			socket.emit('join', 'Issue')
+			
+			// Test if the server acknowledges our subscription
+			socket.emit('doctype_subscribe', 'Issue', (ack) => {
+				if (ack) {
+					console.log('✅ Doctype subscription acknowledged:', ack)
+				} else {
+					console.warn('⚠️ No acknowledgment for doctype subscription')
+				}
+			})
 		})
 		
 		socket.on('connect_error', (error) => {
@@ -70,4 +88,42 @@ export function initSocket() {
 
 export function useSocket() {
 	return socket
+}
+
+// Debug function to test socket connection and events
+export function debugSocket() {
+	if (!socket) {
+		console.error('❌ Socket not initialized')
+		return
+	}
+	
+	console.log('🔍 Socket Debug Info:')
+	console.log('- Connected:', socket.connected)
+	console.log('- Socket ID:', socket.id)
+	console.log('- Transport:', socket.io.engine.transport.name)
+	console.log('- URL:', socket.io.uri)
+	
+	// Test subscription
+	console.log('📡 Testing doctype subscription...')
+	socket.emit('doctype_subscribe', 'Issue', (ack) => {
+		console.log('✅ Subscription acknowledgment:', ack)
+	})
+	
+	// Test if we can emit a custom event
+	socket.emit('test_event', { message: 'Hello from frontend' }, (response) => {
+		console.log('📨 Test event response:', response)
+	})
+	
+	return {
+		socket,
+		connected: socket.connected,
+		id: socket.id,
+		transport: socket.io.engine.transport.name,
+		url: socket.io.uri
+	}
+}
+
+// Make debug function available globally for console testing
+if (typeof window !== 'undefined') {
+	window.debugSocket = debugSocket
 }

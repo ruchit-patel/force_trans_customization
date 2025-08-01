@@ -87,7 +87,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from "vue"
+import { computed, onMounted, onUnmounted, ref, watch, shallowRef, markRaw } from "vue"
 import { Button, FeatherIcon } from "frappe-ui"
 import IssueFilters from "../components/IssueFilters.vue"
 import IssuePagination from "../components/IssuePagination.vue"
@@ -348,11 +348,29 @@ const clearStatFilter = () => {
   getIssuesCount(nonSearchFilters.value)
 }
 
-// Filter options
-const priorityOptions = computed(() => getPriorityOptions())
-const tagsOptions = computed(() => getIssueTypeOptions()) // Issue types as tags
-const statusOptions = computed(() => getStatusOptions())
-const assigneeOptions = computed(() => getAssigneeOptions(allIssues.value))
+// Memoized filter options to prevent unnecessary re-computations
+// These are static or rarely changing, so we can use shallowRef for better performance
+const priorityOptions = shallowRef(markRaw(getPriorityOptions()))
+const tagsOptions = shallowRef(markRaw(getIssueTypeOptions()))
+const statusOptions = shallowRef(markRaw(getStatusOptions()))
+
+// Memoized assignee options with caching based on issues length
+let assigneeOptionsCache = null
+let lastIssuesLength = 0
+const assigneeOptions = computed(() => {
+  const currentLength = allIssues.value.length
+  
+  // Return cached options if issues length hasn't changed
+  if (assigneeOptionsCache && lastIssuesLength === currentLength) {
+    return assigneeOptionsCache
+  }
+  
+  // Recalculate and cache
+  assigneeOptionsCache = markRaw(getAssigneeOptions(allIssues.value))
+  lastIssuesLength = currentLength
+  
+  return assigneeOptionsCache
+})
 
 // Pagination state
 const currentPage = ref(1)
@@ -421,11 +439,13 @@ const nonSearchFilters = computed(() => {
   return filterObj
 })
 
-// Watch for filter changes and reload data from server when needed
-// Note: We exclude search-related filters to prevent table updates while typing
-watch(
-  [nonSearchFilters, sortOrder],
-  () => {
+// Optimized watcher with debouncing to prevent excessive API calls
+let filterChangeTimeout = null
+const debouncedFilterChange = () => {
+  if (filterChangeTimeout) {
+    clearTimeout(filterChangeTimeout)
+  }
+  filterChangeTimeout = setTimeout(() => {
     // If user is changing filters (not search), exit special filter modes
     if (isUsingSuggestionFilter.value) {
       isUsingSuggestionFilter.value = false
@@ -450,7 +470,14 @@ watch(
 
     // Also reload count with new filters
     getIssuesCount(nonSearchFilters.value)
-  },
+  }, 300) // 300ms debounce
+}
+
+// Watch for filter changes and reload data from server when needed
+// Note: We exclude search-related filters to prevent table updates while typing
+watch(
+  [nonSearchFilters, sortOrder],
+  debouncedFilterChange,
   { deep: true },
 )
 

@@ -141,50 +141,95 @@ export const projectResource = createResource({
 	auto: true,
 })
 
-// Helper functions to get dropdown options
+// Memoized helper functions to get dropdown options with caching and data freshness checks
+let priorityOptionsCache = null
+let priorityDataHash = null
+let issueTypeOptionsCache = null
+let issueTypeDataHash = null
+let projectOptionsCache = null
+let projectDataHash = null
+
 export function getPriorityOptions() {
-	const priorities = issuePriorityResource.data || []
-	return [
+	const currentData = issuePriorityResource.data || []
+	const currentHash = JSON.stringify(currentData)
+	
+	// Return cached result if data hasn't changed
+	if (priorityOptionsCache && priorityDataHash === currentHash) {
+		return priorityOptionsCache
+	}
+	
+	const options = [
 		{ label: "All Priority", value: "" },
-		...priorities.map((p) => ({
+		...currentData.map((p) => ({
 			label: p.name,
 			value: p.name,
 		})),
 	]
+	
+	// Cache the result with data hash
+	priorityOptionsCache = Object.freeze(options)
+	priorityDataHash = currentHash
+	return priorityOptionsCache
 }
 
 export function getIssueTypeOptions() {
-	const types = issueTypeResource.data || []
-	return [
+	const currentData = issueTypeResource.data || []
+	const currentHash = JSON.stringify(currentData)
+	
+	// Return cached result if data hasn't changed
+	if (issueTypeOptionsCache && issueTypeDataHash === currentHash) {
+		return issueTypeOptionsCache
+	}
+	
+	const options = [
 		{ label: "All Types", value: "" },
-		...types.map((t) => ({
+		...currentData.map((t) => ({
 			label: t.name,
 			value: t.name,
 		})),
 	]
+	
+	// Cache the result with data hash
+	issueTypeOptionsCache = Object.freeze(options)
+	issueTypeDataHash = currentHash
+	return issueTypeOptionsCache
 }
 
 export function getProjectOptions() {
-	const projects = projectResource.data || []
-	return [
+	const currentData = projectResource.data || []
+	const currentHash = JSON.stringify(currentData)
+	
+	// Return cached result if data hasn't changed
+	if (projectOptionsCache && projectDataHash === currentHash) {
+		return projectOptionsCache
+	}
+	
+	const options = [
 		{ label: "All Projects", value: "" },
-		...projects.map((p) => ({
+		...currentData.map((p) => ({
 			label: p.project_name || p.name,
 			value: p.name,
 		})),
 	]
+	
+	// Cache the result with data hash
+	projectOptionsCache = Object.freeze(options)
+	projectDataHash = currentHash
+	return projectOptionsCache
 }
 
-// Status options (hardcoded as they are standard)
+// Status options (hardcoded as they are standard) - memoized since they never change
+const statusOptionsCache = Object.freeze([
+	{ label: "All Status", value: "" },
+	{ label: "Open", value: "Open" },
+	{ label: "Replied", value: "Replied" },
+	{ label: "On Hold", value: "On Hold" },
+	{ label: "Resolved", value: "Resolved" },
+	{ label: "Closed", value: "Closed" },
+])
+
 export function getStatusOptions() {
-	return [
-		{ label: "All Status", value: "" },
-		{ label: "Open", value: "Open" },
-		{ label: "Replied", value: "Replied" },
-		{ label: "On Hold", value: "On Hold" },
-		{ label: "Resolved", value: "Resolved" },
-		{ label: "Closed", value: "Closed" },
-	]
+	return statusOptionsCache
 }
 
 // Resource for fetching tag colors from Tag Categories
@@ -197,11 +242,35 @@ export const tagColorsResource = createResource({
 	auto: true, // Auto-fetch on component mount
 })
 
-// Helper function to get tag color
+// Memoized tag color cache with data freshness check
+const tagColorCache = new Map()
+let tagColorsDataHash = null
+
+// Helper function to get tag color with memoization and cache invalidation
 export function getTagColor(tagName) {
-	const tagColors = tagColorsResource.data || {}
-	return tagColors[tagName] || null
+	const currentData = tagColorsResource.data || {}
+	const currentHash = JSON.stringify(currentData)
+	
+	// Clear cache if data has changed
+	if (tagColorsDataHash !== currentHash) {
+		tagColorCache.clear()
+		tagColorsDataHash = currentHash
+	}
+	
+	// Check cache first
+	if (tagColorCache.has(tagName)) {
+		return tagColorCache.get(tagName)
+	}
+	
+	const color = currentData[tagName] || null
+	
+	// Cache the result
+	tagColorCache.set(tagName, color)
+	
+	return color
 }
+
+// Cache invalidation will be handled by checking data freshness in the getter functions
 
 // Resource for searching issues (for autocomplete suggestions)
 export const issueSearchResource = createResource({
@@ -351,10 +420,19 @@ export function getStatFilterCount(statType) {
 	})
 }
 
-// Helper function to refresh all filter options
+// Helper function to refresh all filter options and clear caches
 export function refreshFilterOptions() {
+	// Clear caches before reloading
+	priorityOptionsCache = null
+	issueTypeOptionsCache = null
+	projectOptionsCache = null
+	
 	issuePriorityResource.reload()
 	issueTypeResource.reload()
 	projectResource.reload()
 	tagColorsResource.reload()
 }
+
+// Cache invalidation is handled by checking data freshness in the getter functions
+// The frappe-ui createResource doesn't support event listeners, so we rely on
+// the cache validation logic in getPriorityOptions, getIssueTypeOptions, and getProjectOptions
