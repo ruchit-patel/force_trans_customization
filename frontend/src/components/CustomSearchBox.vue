@@ -38,7 +38,7 @@
 				<div v-if="!searchQuery && !isFocused" class="flex items-center pointer-events-none">
 					<kbd class="hidden sm:inline-flex items-center px-2.5 py-1.5 border border-slate-200 
                                rounded-lg text-xs font-mono text-slate-400 bg-slate-50/80 shadow-sm">
-						<span class="text-xs">⌘</span>K
+						<span class="text-xs">⌘+</span>K
 					</kbd>
 				</div>
 
@@ -74,7 +74,8 @@
 			</div>
 
 			<!-- Search Results -->
-			<div ref="suggestionsContainer" class="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+			<div ref="suggestionsContainer"
+				class="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
 				<div v-if="searchSuggestions.length === 0 && searchQuery.length >= 2" class="px-6 py-8 text-center">
 					<div class="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
 						<svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,8 +88,7 @@
 				</div>
 
 				<div v-for="(suggestion, index) in searchSuggestions" :key="suggestion.name || index"
-					:ref="el => suggestionRefs[index] = el"
-					@click="selectSuggestion(suggestion)" class="group px-4 py-4 hover:bg-blue-50/50 cursor-pointer transition-all duration-150 
+					:ref="el => suggestionRefs[index] = el" @click="selectSuggestion(suggestion)" class="group px-4 py-4 hover:bg-blue-50/50 cursor-pointer transition-all duration-150 
                             border-b border-slate-50 last:border-b-0" :class="{
 								'bg-blue-50 ring-2 ring-blue-500/10': index === selectedSuggestionIndex
 							}">
@@ -141,7 +141,7 @@
 									</svg>
 									{{ suggestion.raised_by }}
 								</div>
-								
+
 								<!-- Creation Date -->
 								<div v-if="suggestion.creation" class="flex items-center">
 									<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +330,7 @@ const handleFocus = () => {
 		clearTimeout(blurTimeout)
 		blurTimeout = null
 	}
-	
+
 	// Show suggestions if there's a query and we have results or need to fetch them
 	if (searchQuery.value.length >= 2) {
 		// If we already have suggestions, show them immediately
@@ -440,13 +440,13 @@ const scrollToSelectedSuggestion = () => {
 // Function to format creation date for display
 const formatCreationDate = (dateString) => {
 	if (!dateString) return ''
-	
+
 	try {
 		const date = new Date(dateString)
 		const now = new Date()
 		const diffTime = Math.abs(now - date)
 		const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-		
+
 		// If less than 1 day, show relative time
 		if (diffDays === 1) {
 			return 'Today'
