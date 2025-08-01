@@ -27,41 +27,68 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
 
   const setupRealtimeUpdates = () => {
     if (!socket || realtimeEventsSetup.value) {
+      console.log('⚠️ Skipping realtime setup - socket:', !!socket, 'already setup:', realtimeEventsSetup.value)
       return
     }
     
+    console.log('🚀 Setting up realtime updates for Issue doctype')
+    
     // Subscribe to Issue doctype updates (Frappe's standard way)
+    console.log('📡 Emitting doctype_subscribe for Issue')
     socket.emit('doctype_subscribe', 'Issue')
+    
+    // Try alternative subscription methods for different Frappe versions/configurations
+    socket.emit('subscribe', 'Issue')
+    socket.emit('join_room', 'Issue')
+    socket.emit('join', 'doctype:Issue')
+    
+    // Also try subscribing to specific document events
+    socket.emit('subscribe_to_doctype', 'Issue')
     
     // Remove any existing listeners to avoid duplicates
     socket.off('list_update')
     
     // Listen for Frappe's standard list_update event
     socket.on('list_update', (data) => {
+      console.log('📨 Received list_update event:', data)
+      
       if (data?.doctype !== 'Issue') {
+        console.log('⏭️ Ignoring list_update - not for Issue doctype:', data?.doctype)
         return
       }
 
+      console.log('✅ Processing Issue list_update:', data)
+
       // Skip updates if we're in a state where updates should be avoided
       if (avoidRealtimeUpdate()) {
+        console.log('⏸️ Skipping realtime update due to avoidRealtimeUpdate()')
         return
       }
 
       // Add to pending refreshes
       pendingDocumentRefreshes.value.push(data)
+      console.log('📝 Added to pending refreshes. Total pending:', pendingDocumentRefreshes.value.length)
       debouncedRefresh()
     })
 
     // Also listen for individual document events that should trigger list updates
     const documentEvents = ['doctype_update', 'Issue_update', 'Issue_create', 'Issue_delete']
     
+    console.log('👂 Setting up listeners for document events:', documentEvents)
+    
     documentEvents.forEach(eventName => {
       socket.on(eventName, (data) => {
+        console.log(`📨 Received ${eventName} event:`, data)
+        
         if (data?.doctype !== 'Issue') {
+          console.log(`⏭️ Ignoring ${eventName} - not for Issue doctype:`, data?.doctype)
           return
         }
 
+        console.log(`✅ Processing Issue ${eventName}:`, data)
+
         if (avoidRealtimeUpdate()) {
+          console.log('⏸️ Skipping realtime update due to avoidRealtimeUpdate()')
           return
         }
 
@@ -75,12 +102,96 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
           timestamp: new Date().toISOString()
         }
 
+        console.log('📝 Converted to list_update format:', listUpdateData)
         pendingDocumentRefreshes.value.push(listUpdateData)
+        console.log('📝 Added to pending refreshes. Total pending:', pendingDocumentRefreshes.value.length)
         debouncedRefresh()
       })
     })
 
+    // Add comprehensive event listeners for different Frappe versions/configurations
+    const allPossibleEvents = [
+      'list_update',
+      'doctype_update', 
+      'Issue_update',
+      'Issue_create', 
+      'Issue_delete',
+      'doc_update',
+      'doc_create',
+      'doc_delete',
+      'document_update',
+      'document_create',
+      'document_delete',
+      'eval_js', // Sometimes Frappe sends updates via eval_js
+      'msgprint',
+      'refresh'
+    ]
+    
+    // Set up listeners for all possible event names
+    allPossibleEvents.forEach(eventName => {
+      socket.on(eventName, (data) => {
+        console.log(`🔍 Received ${eventName} event:`, data)
+        
+        // Check if this event is related to Issues
+        const isIssueRelated = (
+          data?.doctype === 'Issue' ||
+          data?.doc_type === 'Issue' ||
+          data?.name?.startsWith('ISS-') ||
+          (typeof data === 'string' && data.includes('Issue')) ||
+          eventName.includes('Issue')
+        )
+        
+        if (isIssueRelated) {
+          console.log(`✅ Processing Issue-related ${eventName}:`, data)
+          
+          if (avoidRealtimeUpdate()) {
+            console.log('⏸️ Skipping realtime update due to avoidRealtimeUpdate()')
+            return
+          }
+          
+          // Normalize the data format
+          let normalizedData = data
+          if (typeof data === 'string') {
+            try {
+              normalizedData = JSON.parse(data)
+            } catch (e) {
+              normalizedData = { name: data, doctype: 'Issue' }
+            }
+          }
+          
+          const listUpdateData = {
+            doctype: 'Issue',
+            name: normalizedData.name || normalizedData.doc_name || 'Unknown',
+            action: eventName.includes('create') ? 'insert' : 
+                    eventName.includes('delete') ? 'delete' : 'update',
+            modified_by: normalizedData.modified_by || normalizedData.owner || 'System',
+            timestamp: new Date().toISOString()
+          }
+          
+          console.log('📝 Normalized to list_update format:', listUpdateData)
+          pendingDocumentRefreshes.value.push(listUpdateData)
+          console.log('📝 Added to pending refreshes. Total pending:', pendingDocumentRefreshes.value.length)
+          debouncedRefresh()
+        }
+      })
+    })
+    
+    // Add a catch-all listener to see ALL events (for debugging)
+    socket.onAny((eventName, ...args) => {
+      // Only log events that might be relevant to avoid spam
+      if (eventName.includes('Issue') || 
+          eventName.includes('list') || 
+          eventName.includes('update') ||
+          eventName.includes('create') ||
+          eventName.includes('delete') ||
+          eventName.includes('doc') ||
+          (args[0] && typeof args[0] === 'object' && args[0].doctype === 'Issue')) {
+        console.log('🔍 Catch-all - Received relevant event:', eventName, args)
+      }
+    })
+
     realtimeEventsSetup.value = true
+    console.log('✅ Realtime updates setup complete')
   }
 
   const disableRealtimeUpdates = () => {

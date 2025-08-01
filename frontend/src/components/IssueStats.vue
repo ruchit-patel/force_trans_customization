@@ -54,7 +54,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from "vue"
+import { ref, computed, onMounted, watch, shallowRef } from "vue"
 import { call } from "frappe-ui"
 
 const props = defineProps({
@@ -71,8 +71,8 @@ const props = defineProps({
 // Define emits
 const emit = defineEmits(['filter-changed'])
 
-// Global statistics (independent of current page)
-const stats = ref({
+// Use shallowRef for stats object since we replace the entire object
+const stats = shallowRef({
   team_tickets: 0,
   open_tickets: 0,
   assigned_to_me: 0,
@@ -80,22 +80,48 @@ const stats = ref({
   response_tickets: 0
 })
 
-// Reactive getters for template
+// Memoized reactive getters for template with proper reactivity
 const teamTickets = computed(() => stats.value.team_tickets)
 const openTickets = computed(() => stats.value.open_tickets)
 const assignedToMe = computed(() => stats.value.assigned_to_me)
 const actionableTickets = computed(() => stats.value.actionable_tickets)
 const responseTickets = computed(() => stats.value.response_tickets)
 
-// Function to fetch global stats
+// Memoized stats fetching with debouncing to prevent excessive API calls
+let statsCache = null
+let lastFetchTime = 0
+const CACHE_DURATION = 30000 // 30 seconds cache
+
 const fetchStats = async () => {
+  const now = Date.now()
+  
+  // Return cached result if still valid
+  if (statsCache && (now - lastFetchTime) < CACHE_DURATION) {
+    return statsCache
+  }
+  
   try {
     const result = await call("force_trans_customization.api.issues.get_issue_stats")
     stats.value = result
+    statsCache = result
+    lastFetchTime = now
+    return result
   } catch (error) {
     console.error("Error fetching issue stats:", error)
     // Keep existing values on error
+    return stats.value
   }
+}
+
+// Debounced stats refresh to prevent excessive API calls
+let refreshTimeout = null
+const debouncedStatsRefresh = () => {
+  if (refreshTimeout) {
+    clearTimeout(refreshTimeout)
+  }
+  refreshTimeout = setTimeout(() => {
+    fetchStats()
+  }, 500) // 500ms debounce
 }
 
 // Fetch stats on component mount
@@ -103,11 +129,11 @@ onMounted(() => {
   fetchStats()
 })
 
-// Watch for changes in issues prop to refresh stats
-// This ensures stats are updated when issues are modified/added/deleted
-watch(() => props.issues, () => {
-  fetchStats()
-}, { deep: true })
+// Optimized watcher - only watch issues length instead of deep watching entire array
+// This prevents unnecessary re-renders when issue content changes but count remains same
+watch(() => props.issues.length, () => {
+  debouncedStatsRefresh()
+})
 
 // Handle stat tile clicks
 const handleStatClick = (filterType) => {

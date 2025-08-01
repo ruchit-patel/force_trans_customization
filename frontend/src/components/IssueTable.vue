@@ -188,7 +188,7 @@ import ListRow from "frappe-ui/src/components/ListView/ListRow.vue"
 import ListRowItem from "frappe-ui/src/components/ListView/ListRowItem.vue"
 import ListRows from "frappe-ui/src/components/ListView/ListRows.vue"
 import ListSelectBanner from "frappe-ui/src/components/ListView/ListSelectBanner.vue"
-import { computed, ref } from "vue"
+import { computed, ref, shallowRef, watchEffect } from "vue"
 import { getTagColor } from "../data/issues"
 
 // Enhanced status badge component with custom status values
@@ -409,23 +409,50 @@ export default {
 			return priorityColors[priority] || "yellow"
 		}
 
-		// Transform issues data to include badge structure for ListView
+		// Memoized transformation cache to prevent unnecessary re-computations
+		const transformationCache = new Map()
+		
+		// Transform issues data to include badge structure for ListView with memoization
 		const transformedIssues = computed(() => {
-			return props.issues.map((issue) => ({
-				...issue,
-				status: {
-					label: issue.status || "New",
-					color: getStatusBadgeColor(issue.status),
-				},
-				priority: {
-					label: issue.priority || "Medium",
-					color: getPriorityBadgeColor(issue.priority),
-				},
-			}))
+			return props.issues.map((issue) => {
+				// Use issue name as cache key since it's unique
+				const cacheKey = issue.name
+				
+				// Check if we have a cached transformation for this issue
+				if (transformationCache.has(cacheKey)) {
+					const cached = transformationCache.get(cacheKey)
+					// Verify the cached data is still valid (status/priority haven't changed)
+					if (cached.originalStatus === issue.status && cached.originalPriority === issue.priority) {
+						return cached.transformed
+					}
+				}
+				
+				// Create new transformation
+				const transformed = {
+					...issue,
+					status: {
+						label: issue.status || "New",
+						color: getStatusBadgeColor(issue.status),
+					},
+					priority: {
+						label: issue.priority || "Medium",
+						color: getPriorityBadgeColor(issue.priority),
+					},
+				}
+				
+				// Cache the transformation
+				transformationCache.set(cacheKey, {
+					transformed,
+					originalStatus: issue.status,
+					originalPriority: issue.priority
+				})
+				
+				return transformed
+			})
 		})
 
-		// ListView columns configuration with sortable support
-		const columns = computed(() => [
+		// Static columns configuration (memoized since it never changes)
+		const columns = shallowRef([
 			{
 				label: "Issue ID",
 				key: "name",
@@ -444,7 +471,6 @@ export default {
 				width: "160px",
 				sortable: true,
 			},
-
 			{
 				label: "Assignee",
 				key: "raised_by",
@@ -457,7 +483,6 @@ export default {
 				width: "180px",
 				sortable: false,
 			},
-
 			{
 				label: "Tags",
 				key: "_user_tags",
@@ -472,8 +497,8 @@ export default {
 			},
 		])
 
-		// ListView options
-		const listOptions = computed(() => ({
+		// Static ListView options (memoized since they rarely change)
+		const listOptions = shallowRef({
 			showTooltip: true,
 			selectable: true,
 			resizeColumn: false,
@@ -486,7 +511,7 @@ export default {
 				// Handle row click
 				console.log("Row clicked:", row)
 			},
-		}))
+		})
 
 		// Handle selections
 		const handleSelections = (selections) => {
@@ -648,10 +673,17 @@ export default {
 			return "" // Default button styling
 		}
 
-		// Tag styling function
+		// Memoized tag styling function to prevent recalculating colors
+		const tagStyleCache = new Map()
 		const getTagStyle = (tag) => {
+			// Check cache first
+			if (tagStyleCache.has(tag)) {
+				return tagStyleCache.get(tag)
+			}
+			
 			// Get tag color from API
 			const hexColor = getTagColor(tag)
+			let style
 
 			if (hexColor) {
 				// Convert hex color to RGB for background and text colors
@@ -666,19 +698,23 @@ export default {
 				// Create text color (darker version for contrast)
 				const textColor = `rgb(${Math.max(r - 50, 0)}, ${Math.max(g - 50, 0)}, ${Math.max(b - 50, 0)})`
 
-				return {
+				style = {
 					backgroundColor: bgColor,
 					color: textColor,
 					borderColor: textColor
 				}
+			} else {
+				// Fallback to default styling
+				style = {
+					backgroundColor: '#f3f4f6',
+					color: '#374151',
+					borderColor: '#d1d5db'
+				}
 			}
-
-			// Fallback to default styling
-			return {
-				backgroundColor: '#f3f4f6',
-				color: '#374151',
-				borderColor: '#d1d5db'
-			}
+			
+			// Cache the result
+			tagStyleCache.set(tag, style)
+			return style
 		}
 
 		return {

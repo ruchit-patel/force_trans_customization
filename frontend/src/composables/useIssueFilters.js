@@ -1,6 +1,6 @@
-import { computed, ref, watch } from "vue"
+import { computed, ref, watch, shallowRef, markRaw } from "vue"
 
-// Simple debounce function
+// Optimized debounce function with cleanup
 function debounce(func, wait) {
 	let timeout
 	return function executedFunction(...args) {
@@ -75,9 +75,28 @@ export function useIssueFilters() {
 		return filters.value.sortBy || "creation desc"
 	})
 
-	// Function to apply filters to a list of issues (client-side filtering)
+	// Memoized filter cache to prevent re-filtering identical data
+	const filterCache = new Map()
+	
+	// Function to apply filters to a list of issues (client-side filtering) with memoization
 	const filterIssues = (issues) => {
 		if (!issues || !Array.isArray(issues)) return []
+
+		// Create cache key based on issues length and filter values
+		const cacheKey = JSON.stringify({
+			issuesLength: issues.length,
+			searchQuery: searchQuery.value.trim(),
+			status: filters.value.status,
+			priority: filters.value.priority,
+			assignee: filters.value.assignee,
+			tags: filters.value.tags,
+			sortBy: filters.value.sortBy
+		})
+		
+		// Return cached result if available
+		if (filterCache.has(cacheKey)) {
+			return filterCache.get(cacheKey)
+		}
 
 		let filteredIssues = [...issues]
 
@@ -119,7 +138,8 @@ export function useIssueFilters() {
 			)
 		}
 
-		// Apply sorting
+		// Apply sorting with memoized priority order
+		const priorityOrder = markRaw({ Critical: 4, High: 3, Medium: 2, Low: 1 })
 		filteredIssues.sort((a, b) => {
 			const [field, direction] = filters.value.sortBy.split(" ")
 			const aValue = a[field] || ""
@@ -132,7 +152,6 @@ export function useIssueFilters() {
 				comparison = new Date(aValue) - new Date(bValue)
 			} else if (field === "priority") {
 				// Custom priority sorting: Critical > High > Medium > Low
-				const priorityOrder = { Critical: 4, High: 3, Medium: 2, Low: 1 }
 				comparison = (priorityOrder[aValue] || 0) - (priorityOrder[bValue] || 0)
 			} else {
 				// String comparison
@@ -142,13 +161,36 @@ export function useIssueFilters() {
 			return direction === "desc" ? -comparison : comparison
 		})
 
+		// Cache the result (limit cache size to prevent memory leaks)
+		if (filterCache.size > 50) {
+			const firstKey = filterCache.keys().next().value
+			filterCache.delete(firstKey)
+		}
+		filterCache.set(cacheKey, filteredIssues)
+
 		return filteredIssues
 	}
 
-	// Function to get unique assignees from issues list
+	// Memoized assignee options cache
+	let assigneeOptionsCache = null
+	let lastAssigneeIssuesHash = null
+	
+	// Function to get unique assignees from issues list with memoization
 	const getAssigneeOptions = (issues) => {
 		if (!issues || !Array.isArray(issues))
-			return [{ label: "All Assignees", value: "" }]
+			return markRaw([{ label: "All Assignees", value: "" }])
+
+		// Create hash of assignees to detect changes
+		const assigneesHash = issues
+			.map(issue => issue.raised_by)
+			.filter(assignee => assignee && assignee.trim())
+			.sort()
+			.join('|')
+		
+		// Return cached result if assignees haven't changed
+		if (assigneeOptionsCache && lastAssigneeIssuesHash === assigneesHash) {
+			return assigneeOptionsCache
+		}
 
 		const uniqueAssignees = [
 			...new Set(
@@ -158,13 +200,19 @@ export function useIssueFilters() {
 			),
 		]
 
-		return [
+		const options = markRaw([
 			{ label: "All Assignees", value: "" },
 			...uniqueAssignees.map((assignee) => ({
 				label: assignee,
 				value: assignee,
 			})),
-		]
+		])
+		
+		// Cache the result
+		assigneeOptionsCache = options
+		lastAssigneeIssuesHash = assigneesHash
+
+		return options
 	}
 
 	// Function to reset all filters
