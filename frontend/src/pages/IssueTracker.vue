@@ -131,9 +131,9 @@ const {
   realtimeEventsSetup,
   manualRefresh
 } = useIssueListUpdates(() => {
-  // Return current parameters for realtime updates
+  // Return current parameters for realtime updates (excluding search filters)
   return {
-    filters: apiFilters.value,
+    filters: nonSearchFilters.value,
     order_by: sortOrder.value,
     limit_page_length: itemsPerPage.value,
     limit_start: (currentPage.value - 1) * itemsPerPage.value,
@@ -242,16 +242,16 @@ const clearSuggestionFilter = () => {
   // Reset to first page
   currentPage.value = 1
   
-  // Reload with normal filters
+  // Reload with normal filters (excluding search)
   reloadIssues({
-    filters: apiFilters.value,
+    filters: nonSearchFilters.value,
     order_by: sortOrder.value,
     limit_page_length: itemsPerPage.value,
     limit_start: 0,
   })
   
   // Reload count
-  getIssuesCount(apiFilters.value)
+  getIssuesCount(nonSearchFilters.value)
 }
 
 // Filter options
@@ -280,65 +280,102 @@ const handlePageChange = ({ page, itemsPerPage: newItemsPerPage, offset }) => {
       order_by: sortOrder.value,
     })
   } else {
-    // Use regular filtering for pagination
+    // Use regular filtering for pagination (excluding search)
     reloadIssues({
-      filters: apiFilters.value,
+      filters: nonSearchFilters.value,
       order_by: sortOrder.value,
       limit_page_length: newItemsPerPage,
       limit_start: offset,
     })
 
     // Also reload count with current filters
-    getIssuesCount(apiFilters.value)
+    getIssuesCount(nonSearchFilters.value)
   }
 }
 
+// Create computed property for non-search filters only
+const nonSearchFilters = computed(() => {
+  const filterObj = {}
+
+  // Add status filter
+  if (filters.value.status) {
+    filterObj["status"] = filters.value.status
+  }
+
+  // Add priority filter
+  if (filters.value.priority) {
+    filterObj["priority"] = filters.value.priority
+  }
+
+  // Add assignee filter
+  if (filters.value.assignee) {
+    filterObj["raised_by"] = filters.value.assignee
+  }
+
+  // Add tags filter (issue_type)
+  if (filters.value.tags) {
+    filterObj["issue_type"] = filters.value.tags
+  }
+
+  return filterObj
+})
+
 // Watch for filter changes and reload data from server when needed
+// Note: We exclude search-related filters to prevent table updates while typing
 watch(
-  [debouncedSearchQuery, apiFilters, sortOrder],
+  [nonSearchFilters, sortOrder],
   () => {
-    // If user is typing in search or changing filters, exit suggestion mode
+    // If user is changing filters (not search), exit suggestion mode
     if (isUsingSuggestionFilter.value) {
-      // Check if the search query was manually changed (not from suggestion selection)
-      const currentSuggestionText = currentSuggestion.value?.subject || currentSuggestion.value?.name || ""
-      if (searchQuery.value !== currentSuggestionText) {
-        // User manually changed search, exit suggestion mode
-        isUsingSuggestionFilter.value = false
-        currentSuggestion.value = null
-      }
+      isUsingSuggestionFilter.value = false
+      currentSuggestion.value = null
     }
 
-    // Only proceed with regular filtering if not in suggestion mode
-    if (!isUsingSuggestionFilter.value) {
-      // Reset to first page when filters change
-      currentPage.value = 1
+    // Reset to first page when filters change
+    currentPage.value = 1
 
-      // Reload issues with new filters and sort order
-      reloadIssues({
-        filters: apiFilters.value,
-        order_by: sortOrder.value,
-        limit_page_length: itemsPerPage.value,
-        limit_start: 0,
-      })
+    // Reload issues with new filters and sort order
+    reloadIssues({
+      filters: nonSearchFilters.value,
+      order_by: sortOrder.value,
+      limit_page_length: itemsPerPage.value,
+      limit_start: 0,
+    })
 
-      // Also reload count with new filters
-      getIssuesCount(apiFilters.value)
-    }
+    // Also reload count with new filters
+    getIssuesCount(nonSearchFilters.value)
   },
   { deep: true },
 )
 
+// Watch for search query changes to handle clearing the search
+watch(
+  searchQuery,
+  (newSearchQuery) => {
+    // If search is cleared and we were in suggestion mode, return to normal view
+    if (!newSearchQuery && isUsingSuggestionFilter.value) {
+      clearSuggestionFilter()
+    }
+  }
+)
+
+// Note: We intentionally do NOT watch debouncedSearchQuery for table updates
+// The table should only update when:
+// 1. A suggestion is explicitly selected (handled in handleSuggestionSelected)
+// 2. Other filters are changed (handled in the watcher above)
+// 3. Search is cleared while in suggestion mode (handled in the searchQuery watcher above)
+
 onMounted(() => {
-  // Load initial data with pagination parameters
+  // Load initial data with pagination parameters (excluding search filters)
   reloadIssues({
-    filters: apiFilters.value,
+    filters: nonSearchFilters.value,
     order_by: sortOrder.value,
     limit_page_length: itemsPerPage.value,
     limit_start: 0,
   })
 
   // Load initial count
-  getIssuesCount(apiFilters.value)
+  getIssuesCount(nonSearchFilters.value)
 
   // Listen for list update events from the composable
   window.addEventListener('issueListUpdated', (event) => {

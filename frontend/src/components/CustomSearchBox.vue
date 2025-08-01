@@ -74,7 +74,7 @@
 			</div>
 
 			<!-- Search Results -->
-			<div class="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+			<div ref="suggestionsContainer" class="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
 				<div v-if="searchSuggestions.length === 0 && searchQuery.length >= 2" class="px-6 py-8 text-center">
 					<div class="w-16 h-16 mx-auto mb-4 bg-slate-100 rounded-full flex items-center justify-center">
 						<svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,6 +87,7 @@
 				</div>
 
 				<div v-for="(suggestion, index) in searchSuggestions" :key="suggestion.name || index"
+					:ref="el => suggestionRefs[index] = el"
 					@click="selectSuggestion(suggestion)" class="group px-4 py-4 hover:bg-blue-50/50 cursor-pointer transition-all duration-150 
                             border-b border-slate-50 last:border-b-0" :class="{
 								'bg-blue-50 ring-2 ring-blue-500/10': index === selectedSuggestionIndex
@@ -203,6 +204,13 @@ const selectedSuggestionIndex = ref(-1)
 const isLoading = ref(false)
 const searchTime = ref(0)
 
+// Refs for auto-scroll functionality
+const suggestionsContainer = ref(null)
+const suggestionRefs = ref([])
+
+// Debounce timer for search
+let searchTimeout = null
+
 // Watch for external changes to modelValue
 watch(() => props.modelValue, (newValue) => {
 	searchQuery.value = newValue
@@ -221,6 +229,8 @@ const searchSuggestions = ref([])
 const fetchSearchSuggestions = async (query) => {
 	if (!query || query.length < 2) {
 		searchSuggestions.value = []
+		showSuggestions.value = false
+		isLoading.value = false
 		return
 	}
 
@@ -232,25 +242,46 @@ const fetchSearchSuggestions = async (query) => {
 
 		searchTime.value = performance.now() - startTime
 		searchSuggestions.value = results || []
+		showSuggestions.value = true
 
 	} catch (error) {
 		console.error('Search error:', error)
 		searchSuggestions.value = []
+		showSuggestions.value = false
 	} finally {
 		isLoading.value = false
 	}
 }
 
-const handleSearch = () => {
+// Debounced search function
+const debouncedSearch = (query) => {
+	// Clear any existing timeout
+	if (searchTimeout) {
+		clearTimeout(searchTimeout)
+	}
+
+	// Reset selected suggestion index when typing
 	selectedSuggestionIndex.value = -1
 
-	if (searchQuery.value.length >= 2) {
-		fetchSearchSuggestions(searchQuery.value)
-		showSuggestions.value = true
-	} else {
+	// If query is too short, clear suggestions immediately
+	if (!query || query.length < 2) {
 		searchSuggestions.value = []
 		showSuggestions.value = false
+		isLoading.value = false
+		return
 	}
+
+	// Show loading state immediately for better UX
+	isLoading.value = true
+
+	// Set new timeout for 1 second
+	searchTimeout = setTimeout(() => {
+		fetchSearchSuggestions(query)
+	}, 1000)
+}
+
+const handleSearch = () => {
+	debouncedSearch(searchQuery.value)
 }
 
 // Highlight matching text in search results
@@ -282,17 +313,33 @@ const getStatusBadgeClass = (status) => {
 
 const handleFocus = () => {
 	isFocused.value = true
+	// Clear any pending blur timeout to prevent suggestions from hiding
+	if (blurTimeout) {
+		clearTimeout(blurTimeout)
+		blurTimeout = null
+	}
+	
+	// Show suggestions if there's a query and we have results or need to fetch them
 	if (searchQuery.value.length >= 2) {
-		fetchSearchSuggestions(searchQuery.value)
-		showSuggestions.value = true
+		// If we already have suggestions, show them immediately
+		if (searchSuggestions.value.length > 0) {
+			showSuggestions.value = true
+		} else {
+			// Otherwise, fetch new suggestions
+			fetchSearchSuggestions(searchQuery.value)
+		}
 	}
 }
 
+// Add blur timeout variable
+let blurTimeout = null
+
 const handleBlur = () => {
 	isFocused.value = false
-	// Delay hiding suggestions to allow for click events
-	setTimeout(() => {
+	// Use a timeout to allow for click events on suggestions
+	blurTimeout = setTimeout(() => {
 		showSuggestions.value = false
+		blurTimeout = null
 	}, 200)
 }
 
@@ -306,10 +353,14 @@ const handleKeydown = (event) => {
 				selectedSuggestionIndex.value + 1,
 				searchSuggestions.value.length - 1
 			)
+			// Auto-scroll to the selected suggestion
+			scrollToSelectedSuggestion()
 			break
 		case 'ArrowUp':
 			event.preventDefault()
 			selectedSuggestionIndex.value = Math.max(selectedSuggestionIndex.value - 1, -1)
+			// Auto-scroll to the selected suggestion
+			scrollToSelectedSuggestion()
 			break
 		case 'Enter':
 			event.preventDefault()
@@ -342,6 +393,38 @@ const hideSuggestions = () => {
 	selectedSuggestionIndex.value = -1
 }
 
+// Function to scroll selected suggestion into view
+const scrollToSelectedSuggestion = () => {
+	if (selectedSuggestionIndex.value < 0 || !suggestionsContainer.value || !suggestionRefs.value[selectedSuggestionIndex.value]) {
+		return
+	}
+
+	const container = suggestionsContainer.value
+	const selectedElement = suggestionRefs.value[selectedSuggestionIndex.value]
+
+	if (selectedElement) {
+		// Get the position of the selected element relative to the container
+		const containerRect = container.getBoundingClientRect()
+		const elementRect = selectedElement.getBoundingClientRect()
+
+		// Calculate if the element is outside the visible area
+		const elementTop = elementRect.top - containerRect.top + container.scrollTop
+		const elementBottom = elementTop + elementRect.height
+
+		const containerScrollTop = container.scrollTop
+		const containerHeight = container.clientHeight
+
+		// Scroll if element is above the visible area
+		if (elementTop < containerScrollTop) {
+			container.scrollTop = elementTop
+		}
+		// Scroll if element is below the visible area
+		else if (elementBottom > containerScrollTop + containerHeight) {
+			container.scrollTop = elementBottom - containerHeight
+		}
+	}
+}
+
 // Global keyboard shortcut (Cmd+K / Ctrl+K)
 const handleGlobalKeydown = (event) => {
 	if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
@@ -357,6 +440,13 @@ onMounted(() => {
 
 onUnmounted(() => {
 	document.removeEventListener('keydown', handleGlobalKeydown)
+	// Clean up any pending timeouts
+	if (searchTimeout) {
+		clearTimeout(searchTimeout)
+	}
+	if (blurTimeout) {
+		clearTimeout(blurTimeout)
+	}
 })
 
 // Expose methods for parent component
