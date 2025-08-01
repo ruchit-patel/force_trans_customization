@@ -6,7 +6,7 @@ import { reloadIssues, getIssuesCount, issuesResource, fetchSingleIssue, singleI
  * Composable that implements Frappe's list view realtime update pattern
  * Similar to setup_realtime_updates() in frappe/public/js/frappe/list/list_view.js
  */
-export function useIssueListUpdates(getCurrentParams) {
+export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
   const socket = useSocket()
   const pendingDocumentRefreshes = ref([])
   const realtimeEventsSetup = ref(false)
@@ -145,12 +145,19 @@ export function useIssueListUpdates(getCurrentParams) {
   }
 
   const updateIndividualRows = async (documentNames) => {
-    // Check if we have current data
-    if (!issuesResource.data || !Array.isArray(issuesResource.data)) {
-      throw new Error('No issues data available')
-    }
-    
     try {
+      // If a custom refresh function is provided, use it instead of the default logic
+      if (customRefreshFunction && typeof customRefreshFunction === 'function') {
+        await customRefreshFunction()
+        return
+      }
+      
+      // Fallback to default logic if no custom refresh function
+      // Check if we have current data
+      if (!issuesResource.data || !Array.isArray(issuesResource.data)) {
+        throw new Error('No issues data available')
+      }
+      
       // Get the current pagination and filter parameters from the component
       let currentParams = {
         limit_page_length: 10,
@@ -210,8 +217,13 @@ export function useIssueListUpdates(getCurrentParams) {
   const manualRefresh = () => {
     pendingDocumentRefreshes.value = [] // Clear any pending
     try {
-      reloadIssues()
-      getIssuesCount()
+      // Use custom refresh function if provided, otherwise use default
+      if (customRefreshFunction && typeof customRefreshFunction === 'function') {
+        customRefreshFunction()
+      } else {
+        reloadIssues()
+        getIssuesCount()
+      }
     } catch (error) {
       console.error('Error during manual refresh:', error)
     }

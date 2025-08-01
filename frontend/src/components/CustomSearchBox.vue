@@ -391,6 +391,12 @@ const handleKeydown = (event) => {
 const selectSuggestion = (suggestion) => {
 	searchQuery.value = suggestion.name
 	hideSuggestions()
+	
+	// Navigate to Frappe issue page
+	const hostname = window.location.origin
+	const issueUrl = `${hostname}/app/issue/${suggestion.name}`
+	window.open(issueUrl, '_blank')
+	
 	emit('suggestion-selected', suggestion)
 }
 

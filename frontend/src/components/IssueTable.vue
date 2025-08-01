@@ -496,7 +496,10 @@ export default {
 		// Handle issue click
 		const handleIssueClick = (issue) => {
 			console.log("Issue clicked:", issue)
-			// TODO: Navigate to issue detail or emit event
+			// Navigate to Frappe issue page
+			const hostname = window.location.origin
+			const issueUrl = `${hostname}/app/issue/${issue.name}`
+			window.open(issueUrl, '_blank')
 		}
 
 		// Get status color classes for indicator dots

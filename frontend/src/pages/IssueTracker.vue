@@ -29,7 +29,7 @@
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Statistics Cards -->
-      <IssueStats :issues="issues" />
+      <IssueStats :issues="issues" :activeFilter="currentStatFilter" @filter-changed="handleStatFilterChanged" />
 
       <!-- Search and Filters -->
       <IssueFilters v-model:searchQuery="searchQuery" v-model:filters="filters" :statusOptions="statusOptions"
@@ -64,9 +64,9 @@
                 : 'bg-red-500'
             ]"></div>
             <!-- Pending Updates Badge -->
-            <div v-if="pendingDocumentRefreshes > 0"
+            <div v-if="pendingDocumentRefreshes.length > 0"
               class="absolute -top-2 -right-2 bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium animate-bounce">
-              {{ pendingDocumentRefreshes > 9 ? '9+' : pendingDocumentRefreshes }}
+              {{ pendingDocumentRefreshes.length > 9 ? '9+' : pendingDocumentRefreshes.length }}
             </div>
           </div>
         </div>
@@ -108,6 +108,10 @@ import {
   getFilteredIssuesCountBySuggestion,
   suggestionFilterResource,
   suggestionFilterCountResource,
+  filterIssuesByStat,
+  getStatFilterCount,
+  statFilterResource,
+  statFilterCountResource,
 } from "../data/issues"
 import { session } from "../data/session"
 
@@ -125,20 +129,57 @@ const {
 const isUsingSuggestionFilter = ref(false)
 const currentSuggestion = ref(null)
 
+// State to track if we're using stat-based filtering
+const isUsingStatFilter = ref(false)
+const currentStatFilter = ref('team_tickets') // Default to team tickets
+
+// Custom refresh function that knows about current filtering mode
+const refreshCurrentView = () => {
+  const currentParams = {
+    limit_page_length: itemsPerPage.value,
+    limit_start: (currentPage.value - 1) * itemsPerPage.value,
+    order_by: sortOrder.value,
+  }
+
+  if (isUsingStatFilter.value) {
+    // Refresh stat filter view
+    filterIssuesByStat(currentStatFilter.value, currentParams)
+    getStatFilterCount(currentStatFilter.value)
+  } else if (isUsingSuggestionFilter.value && currentSuggestion.value) {
+    // Refresh suggestion filter view
+    const suggestionType = "name"
+    const suggestionValue = currentSuggestion.value.name
+    filterIssuesBySuggestion(suggestionType, suggestionValue, currentParams)
+    getFilteredIssuesCountBySuggestion(suggestionType, suggestionValue)
+  } else {
+    // Refresh regular view
+    reloadIssues({
+      filters: nonSearchFilters.value,
+      ...currentParams,
+    })
+    getIssuesCount(nonSearchFilters.value)
+  }
+}
+
 // Realtime list updates composable (Frappe-style)
 const {
   pendingDocumentRefreshes,
   realtimeEventsSetup,
-  manualRefresh
+  manualRefresh: originalManualRefresh
 } = useIssueListUpdates(() => {
-  // Return current parameters for realtime updates (excluding search filters)
+  // Return current parameters for realtime updates
   return {
     filters: nonSearchFilters.value,
     order_by: sortOrder.value,
     limit_page_length: itemsPerPage.value,
     limit_start: (currentPage.value - 1) * itemsPerPage.value,
   }
-})
+}, refreshCurrentView)
+
+// Override manual refresh to use our custom refresh function
+const manualRefresh = () => {
+  refreshCurrentView()
+}
 
 // Simplified notification system for list updates
 const notifications = ref([])
@@ -161,16 +202,20 @@ const removeNotification = (id) => {
 
 // Computed properties for displaying data
 const allIssues = computed(() => {
-  // Use suggestion filter data if active, otherwise use regular issues data
-  if (isUsingSuggestionFilter.value) {
+  // Priority: stat filter > suggestion filter > regular issues
+  if (isUsingStatFilter.value) {
+    return statFilterResource.data || []
+  } else if (isUsingSuggestionFilter.value) {
     return suggestionFilterResource.data || []
   }
   return issuesResource.data || []
 })
 
 const totalIssues = computed(() => {
-  // Use suggestion filter count if active, otherwise use regular count
-  if (isUsingSuggestionFilter.value) {
+  // Priority: stat filter > suggestion filter > regular count
+  if (isUsingStatFilter.value) {
+    return statFilterCountResource.data || 0
+  } else if (isUsingSuggestionFilter.value) {
     return suggestionFilterCountResource.data || 0
   }
   return issuesCountResource.data || 0
@@ -178,7 +223,9 @@ const totalIssues = computed(() => {
 
 const isLoading = computed(() => {
   // Check loading state of active resource
-  if (isUsingSuggestionFilter.value) {
+  if (isUsingStatFilter.value) {
+    return statFilterResource.loading
+  } else if (isUsingSuggestionFilter.value) {
     return suggestionFilterResource.loading
   }
   return issuesResource.loading
@@ -254,6 +301,53 @@ const clearSuggestionFilter = () => {
   getIssuesCount(nonSearchFilters.value)
 }
 
+// Handle stat filter changes from IssueStats component
+const handleStatFilterChanged = (statType) => {
+  // Exit other filter modes
+  isUsingSuggestionFilter.value = false
+  currentSuggestion.value = null
+  
+  // Set stat filter mode
+  isUsingStatFilter.value = true
+  currentStatFilter.value = statType
+  
+  // Clear search query
+  searchQuery.value = ""
+  
+  // Reset to first page
+  currentPage.value = 1
+  
+  // Filter issues by stat type
+  filterIssuesByStat(statType, {
+    limit_page_length: itemsPerPage.value,
+    limit_start: 0,
+    order_by: sortOrder.value,
+  })
+  
+  // Get count for pagination
+  getStatFilterCount(statType)
+}
+
+// Function to clear stat filter and return to normal view
+const clearStatFilter = () => {
+  isUsingStatFilter.value = false
+  currentStatFilter.value = 'team_tickets'
+  
+  // Reset to first page
+  currentPage.value = 1
+  
+  // Reload with normal filters
+  reloadIssues({
+    filters: nonSearchFilters.value,
+    order_by: sortOrder.value,
+    limit_page_length: itemsPerPage.value,
+    limit_start: 0,
+  })
+  
+  // Reload count
+  getIssuesCount(nonSearchFilters.value)
+}
+
 // Filter options
 const priorityOptions = computed(() => getPriorityOptions())
 const tagsOptions = computed(() => getIssueTypeOptions()) // Issue types as tags
@@ -269,7 +363,14 @@ const handlePageChange = ({ page, itemsPerPage: newItemsPerPage, offset }) => {
   currentPage.value = page
   itemsPerPage.value = newItemsPerPage
 
-  if (isUsingSuggestionFilter.value && currentSuggestion.value) {
+  if (isUsingStatFilter.value) {
+    // Use stat-based filtering for pagination
+    filterIssuesByStat(currentStatFilter.value, {
+      limit_page_length: newItemsPerPage,
+      limit_start: offset,
+      order_by: sortOrder.value,
+    })
+  } else if (isUsingSuggestionFilter.value && currentSuggestion.value) {
     // Use suggestion-based filtering for pagination
     const suggestionType = "name"
     const suggestionValue = currentSuggestion.value.name
@@ -325,10 +426,15 @@ const nonSearchFilters = computed(() => {
 watch(
   [nonSearchFilters, sortOrder],
   () => {
-    // If user is changing filters (not search), exit suggestion mode
+    // If user is changing filters (not search), exit special filter modes
     if (isUsingSuggestionFilter.value) {
       isUsingSuggestionFilter.value = false
       currentSuggestion.value = null
+    }
+    
+    if (isUsingStatFilter.value) {
+      isUsingStatFilter.value = false
+      currentStatFilter.value = 'team_tickets'
     }
 
     // Reset to first page when filters change
@@ -366,16 +472,19 @@ watch(
 // 3. Search is cleared while in suggestion mode (handled in the searchQuery watcher above)
 
 onMounted(() => {
-  // Load initial data with pagination parameters (excluding search filters)
-  reloadIssues({
-    filters: nonSearchFilters.value,
-    order_by: sortOrder.value,
+  // Start with default stat filter (Team Tickets) active
+  isUsingStatFilter.value = true
+  currentStatFilter.value = 'team_tickets'
+  
+  // Load initial data with stat filter
+  filterIssuesByStat('team_tickets', {
     limit_page_length: itemsPerPage.value,
     limit_start: 0,
+    order_by: sortOrder.value,
   })
-
-  // Load initial count
-  getIssuesCount(nonSearchFilters.value)
+  
+  // Load initial count for stat filter
+  getStatFilterCount('team_tickets')
 
   // Listen for list update events from the composable
   window.addEventListener('issueListUpdated', (event) => {
