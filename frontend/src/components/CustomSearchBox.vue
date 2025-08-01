@@ -132,12 +132,24 @@
 							</div>
 
 							<!-- Additional Info -->
-							<div v-if="suggestion.raised_by" class="mt-2 flex items-center text-xs text-slate-400">
-								<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-										d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-								</svg>
-								{{ suggestion.raised_by }}
+							<div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+								<!-- Raised By -->
+								<div v-if="suggestion.raised_by" class="flex items-center">
+									<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+											d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+									</svg>
+									{{ suggestion.raised_by }}
+								</div>
+								
+								<!-- Creation Date -->
+								<div v-if="suggestion.creation" class="flex items-center">
+									<svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+											d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+									</svg>
+									{{ formatCreationDate(suggestion.creation) }}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -422,6 +434,37 @@ const scrollToSelectedSuggestion = () => {
 		else if (elementBottom > containerScrollTop + containerHeight) {
 			container.scrollTop = elementBottom - containerHeight
 		}
+	}
+}
+
+// Function to format creation date for display
+const formatCreationDate = (dateString) => {
+	if (!dateString) return ''
+	
+	try {
+		const date = new Date(dateString)
+		const now = new Date()
+		const diffTime = Math.abs(now - date)
+		const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+		
+		// If less than 1 day, show relative time
+		if (diffDays === 1) {
+			return 'Today'
+		} else if (diffDays === 2) {
+			return 'Yesterday'
+		} else if (diffDays <= 7) {
+			return `${diffDays - 1} days ago`
+		} else {
+			// Otherwise show formatted date
+			return date.toLocaleDateString('en-US', {
+				month: 'short',
+				day: 'numeric',
+				year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+			})
+		}
+	} catch (error) {
+		console.error('Error formatting date:', error)
+		return dateString
 	}
 }
 

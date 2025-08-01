@@ -222,7 +222,7 @@ def get_tag_colors():
 def issue_search(search_query="", limit=8):
     """
     Search issues for autocomplete suggestions
-    Same structure as get_issues_with_assignments but for search suggestions only
+    Returns only essential fields: name, subject, status, raised_by, creation, description
     """
     try:
         # Convert string parameters
@@ -234,29 +234,12 @@ def issue_search(search_query="", limit=8):
         
         search_query = search_query.strip()
         
-        # Base fields to fetch from Issue doctype - same as get_issues_with_assignments
-        fields = [
-            "name",
-            "subject", 
-            "status",
-            "priority",
-            "raised_by",
-            "customer",
-            "project",
-            "issue_type",
-            "creation",
-            "modified",
-            "owner",
-            "description"
-        ]
-        
         # Use raw SQL query for better OR condition handling
         search_pattern = f"%{search_query}%"
         
-        # Build the SQL query with proper OR conditions
+        # Build the SQL query with only essential fields for suggestions
         sql_query = """
-            SELECT name, subject, status, priority, raised_by, customer, project, 
-                   issue_type, creation, modified, owner, description
+            SELECT name, subject, status, raised_by, creation, description
             FROM `tabIssue`
             WHERE (
                 name LIKE %(search_pattern)s OR
@@ -268,38 +251,11 @@ def issue_search(search_query="", limit=8):
             LIMIT %(limit)s
         """
         
-        # Execute the query
+        # Execute the query and return directly - no additional queries needed
         issues = frappe.db.sql(sql_query, {
             'search_pattern': search_pattern,
             'limit': limit
         }, as_dict=True)
-        
-        # For each issue, fetch the custom_users_assigned child table data and tags
-        # Same structure as get_issues_with_assignments
-        for issue in issues:
-            # Get child table data for custom_users_assigned
-            user_assignments = frappe.db.get_all(
-                "Team User Assignment",
-                filters={"parent": issue.name},
-                fields=["*"],  # Get all fields to ensure user_assigned is included
-                order_by="idx asc"  # Order by idx to maintain the order from the form
-            )
-            
-            issue["custom_users_assigned"] = user_assignments
-            
-            # Get tags for this issue
-            tags = frappe.db.get_all(
-                "Tag Link",
-                filters={
-                    "document_type": "Issue",
-                    "document_name": issue.name
-                },
-                fields=["tag"],
-                order_by="creation asc"
-            )
-            
-            # Convert tags to a simple list of tag names
-            issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
         
         return issues
         
