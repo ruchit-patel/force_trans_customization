@@ -85,14 +85,13 @@
 								</div>
 
 								<!-- Tags -->
-								<div v-else-if="column.key === '_user_tags'" 
+								<div v-else-if="column.key === '_user_tags'"
 									class="flex items-center gap-1 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
-									@mouseenter="showTagsPopupFn($event, issue._user_tags)" 
+									@mouseenter="showTagsPopupFn($event, issue._user_tags)"
 									@mouseleave="hideTagsPopupFn">
 									<template v-if="issue._user_tags && issue._user_tags.length > 0">
 										<!-- Show first tag, truncated if needed -->
-										<span 
-											:style="getTagStyle(issue._user_tags[0])"
+										<span :style="getTagStyle(issue._user_tags[0])"
 											class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border transition-colors max-w-16"
 											:title="issue._user_tags[0]">
 											<span class="truncate">{{ issue._user_tags[0] }}</span>
@@ -171,12 +170,8 @@
 			<div class="text-sm">
 				<div class="font-semibold text-gray-900 mb-2">All Tags</div>
 				<div class="flex flex-wrap gap-1">
-					<span 
-						v-for="tag in tagsPopupData" 
-						:key="tag"
-						:style="getTagStyle(tag)"
-						class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border"
-					>
+					<span v-for="tag in tagsPopupData" :key="tag" :style="getTagStyle(tag)"
+						class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border">
 						{{ tag }}
 					</span>
 				</div>
@@ -501,7 +496,10 @@ export default {
 		// Handle issue click
 		const handleIssueClick = (issue) => {
 			console.log("Issue clicked:", issue)
-			// TODO: Navigate to issue detail or emit event
+			// Navigate to Frappe issue page
+			const hostname = window.location.origin
+			const issueUrl = `${hostname}/app/issue/${issue.name}`
+			window.open(issueUrl, '_blank')
 		}
 
 		// Get status color classes for indicator dots
@@ -598,7 +596,7 @@ export default {
 		// Tags popup functions
 		const showTagsPopupFn = (event, tags) => {
 			if (!tags || tags.length === 0) return
-			
+
 			const rect = event.target.getBoundingClientRect()
 			tagsPopupPosition.value = {
 				x: rect.left + rect.width / 2,

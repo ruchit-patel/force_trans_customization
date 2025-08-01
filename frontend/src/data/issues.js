@@ -203,6 +203,154 @@ export function getTagColor(tagName) {
 	return tagColors[tagName] || null
 }
 
+// Resource for searching issues (for autocomplete suggestions)
+export const issueSearchResource = createResource({
+	url: "force_trans_customization.api.issues.issue_search",
+	makeParams(params) {
+		const safeParams = params || {}
+		return {
+			search_query: safeParams.search_query || "",
+			limit: safeParams.limit || 8,
+		}
+	},
+	onError(error) {
+		console.error("Failed to search issues:", error)
+	},
+	auto: false, // Don't auto-fetch, only fetch when called
+})
+
+// Helper function to search issues
+export function searchIssues(searchQuery, limit = 8) {
+	if (!searchQuery || searchQuery.length < 2) {
+		return Promise.resolve(issueSearchResource.data || [])
+	}
+	return issueSearchResource.reload({ search_query: searchQuery, limit }).then(() => {
+		return issueSearchResource.data || []
+	})
+}
+
+// Resource for filtering issues by suggestion
+export const suggestionFilterResource = createResource({
+	url: "force_trans_customization.api.issues.filter_issues_by_suggestion",
+	makeParams(params) {
+		const safeParams = params || {}
+		return {
+			suggestion_type: safeParams.suggestion_type || "",
+			suggestion_value: safeParams.suggestion_value || "",
+			limit_page_length: safeParams.limit_page_length || 10,
+			limit_start: safeParams.limit_start || 0,
+			order_by: safeParams.order_by || "creation desc",
+		}
+	},
+	onError(error) {
+		console.error("Failed to filter issues by suggestion:", error)
+		if (window.$toast) {
+			window.$toast({
+				title: "Error",
+				text: "Failed to filter issues. Please try again.",
+				icon: "x",
+				iconClasses: "text-red-600",
+			})
+		}
+	},
+	auto: false, // Don't auto-fetch, only fetch when called
+})
+
+// Resource for getting count of filtered issues by suggestion
+export const suggestionFilterCountResource = createResource({
+	url: "force_trans_customization.api.issues.get_filtered_issues_count",
+	makeParams(params) {
+		const safeParams = params || {}
+		return {
+			suggestion_type: safeParams.suggestion_type || "",
+			suggestion_value: safeParams.suggestion_value || "",
+		}
+	},
+	onError(error) {
+		console.error("Failed to get filtered issues count:", error)
+	},
+	auto: false, // Don't auto-fetch, only fetch when called
+})
+
+// Helper function to filter issues by suggestion
+export function filterIssuesBySuggestion(suggestionType, suggestionValue, params = {}) {
+	const filterParams = {
+		suggestion_type: suggestionType,
+		suggestion_value: suggestionValue,
+		limit_page_length: params.limit_page_length || 10,
+		limit_start: params.limit_start || 0,
+		order_by: params.order_by || "creation desc",
+	}
+	return suggestionFilterResource.reload(filterParams)
+}
+
+// Helper function to get count of filtered issues by suggestion
+export function getFilteredIssuesCountBySuggestion(suggestionType, suggestionValue) {
+	return suggestionFilterCountResource.reload({
+		suggestion_type: suggestionType,
+		suggestion_value: suggestionValue,
+	})
+}
+
+// Resource for filtering issues by stat type
+export const statFilterResource = createResource({
+	url: "force_trans_customization.api.issues.get_issues_by_stat_filter",
+	makeParams(params) {
+		const safeParams = params || {}
+		return {
+			stat_type: safeParams.stat_type || "team_tickets",
+			limit_page_length: safeParams.limit_page_length || 10,
+			limit_start: safeParams.limit_start || 0,
+			order_by: safeParams.order_by || "creation desc",
+		}
+	},
+	onError(error) {
+		console.error("Failed to filter issues by stat:", error)
+		if (window.$toast) {
+			window.$toast({
+				title: "Error",
+				text: "Failed to filter issues. Please try again.",
+				icon: "x",
+				iconClasses: "text-red-600",
+			})
+		}
+	},
+	auto: false, // Don't auto-fetch, only fetch when called
+})
+
+// Resource for getting count of issues by stat filter
+export const statFilterCountResource = createResource({
+	url: "force_trans_customization.api.issues.get_stat_filter_count",
+	makeParams(params) {
+		const safeParams = params || {}
+		return {
+			stat_type: safeParams.stat_type || "team_tickets",
+		}
+	},
+	onError(error) {
+		console.error("Failed to get stat filter count:", error)
+	},
+	auto: false, // Don't auto-fetch, only fetch when called
+})
+
+// Helper function to filter issues by stat type
+export function filterIssuesByStat(statType, params = {}) {
+	const filterParams = {
+		stat_type: statType,
+		limit_page_length: params.limit_page_length || 10,
+		limit_start: params.limit_start || 0,
+		order_by: params.order_by || "creation desc",
+	}
+	return statFilterResource.reload(filterParams)
+}
+
+// Helper function to get count of issues by stat filter
+export function getStatFilterCount(statType) {
+	return statFilterCountResource.reload({
+		stat_type: statType,
+	})
+}
+
 // Helper function to refresh all filter options
 export function refreshFilterOptions() {
 	issuePriorityResource.reload()
