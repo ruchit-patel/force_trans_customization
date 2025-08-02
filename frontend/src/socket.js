@@ -40,8 +40,7 @@ export function initSocket() {
 		// Add connection event handlers
 		socket.on('connect', () => {
 			console.log('✅ Socket connected successfully')
-			// Subscribe to doctype updates immediately after connection
-			socket.emit('doctype_subscribe', 'Issue')
+			console.log('🔗 Socket ID:', socket.id)
 		})
 		
 		socket.on('connect_error', (error) => {
