@@ -21,14 +21,16 @@ export function initSocket() {
 		}
 
 		if (host.includes('.force-trans.com')) {
-			// Frappe Cloud configuration
-			socketUrl = `${protocol}://${host}`
+			// Frappe Cloud configuration - socket.io is proxied through main domain
+			socketUrl = `${protocol}://${host}/force-trans.v.frappe.cloud`
 			socketOptions = {
 				...socketOptions,
 				path: '/socket.io/',
-				timeout: 30000, // Increase timeout for cloud
-				transports: ['polling', 'websocket'], // Try polling first for cloud
+				timeout: 30000,
+				transports: ['polling', 'websocket'], // Frappe Cloud may prefer polling first
 			}
+			
+			console.log(`Frappe Cloud mode: connecting to main domain with site path`)
 		} else {
 			// Standard Frappe installation with custom socketio port
 			socketUrl = `${protocol}://${host}:${socketio_port}/${siteName}`
@@ -45,9 +47,14 @@ export function initSocket() {
 		
 		socket.on('connect_error', (error) => {
 			console.error('❌ Socket connection error:', error.message)
-			if (host.includes('.frappe.cloud')) {
-				console.warn('⚠️  Frappe Cloud may not have Socket.IO enabled or configured differently')
-				console.warn('💡 Consider checking if real-time features are available on your Frappe Cloud plan')
+			console.error('🔍 Error details:', error)
+			if (host.includes('.force-trans.com')) {
+				console.warn('⚠️  Frappe Cloud socket.io connection failed')
+				console.warn('💡 This could mean:')
+				console.warn('   1. Socket.io is not enabled on this Frappe Cloud plan')
+				console.warn('   2. Site name or path configuration is incorrect')
+				console.warn('   3. Real-time features require a higher tier plan')
+				console.warn(`   4. Attempted URL: ${socketUrl}`)
 			}
 		})
 		
