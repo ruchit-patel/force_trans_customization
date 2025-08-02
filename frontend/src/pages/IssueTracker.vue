@@ -104,10 +104,6 @@ import {
   issuesCountResource,
   issuesResource,
   reloadIssues,
-  filterIssuesBySuggestion,
-  getFilteredIssuesCountBySuggestion,
-  suggestionFilterResource,
-  suggestionFilterCountResource,
   filterIssuesByStat,
   getStatFilterCount,
   statFilterResource,
@@ -125,9 +121,7 @@ const {
   getAssigneeOptions,
 } = useIssueFilters()
 
-// State to track if we're using suggestion-based filtering
-const isUsingSuggestionFilter = ref(false)
-const currentSuggestion = ref(null)
+// Suggestion filtering has been removed - suggestions now open issues in new tabs
 
 // State to track if we're using stat-based filtering
 const isUsingStatFilter = ref(false)
@@ -145,12 +139,6 @@ const refreshCurrentView = () => {
     // Refresh stat filter view
     filterIssuesByStat(currentStatFilter.value, currentParams)
     getStatFilterCount(currentStatFilter.value)
-  } else if (isUsingSuggestionFilter.value && currentSuggestion.value) {
-    // Refresh suggestion filter view
-    const suggestionType = "name"
-    const suggestionValue = currentSuggestion.value.name
-    filterIssuesBySuggestion(suggestionType, suggestionValue, currentParams)
-    getFilteredIssuesCountBySuggestion(suggestionType, suggestionValue)
   } else {
     // Refresh regular view
     reloadIssues({
@@ -202,31 +190,22 @@ const removeNotification = (id) => {
 
 // Computed properties for displaying data
 const allIssues = computed(() => {
-  // Priority: stat filter > suggestion filter > regular issues
   if (isUsingStatFilter.value) {
     return statFilterResource.data || []
-  } else if (isUsingSuggestionFilter.value) {
-    return suggestionFilterResource.data || []
   }
   return issuesResource.data || []
 })
 
 const totalIssues = computed(() => {
-  // Priority: stat filter > suggestion filter > regular count
   if (isUsingStatFilter.value) {
     return statFilterCountResource.data || 0
-  } else if (isUsingSuggestionFilter.value) {
-    return suggestionFilterCountResource.data || 0
   }
   return issuesCountResource.data || 0
 })
 
 const isLoading = computed(() => {
-  // Check loading state of active resource
   if (isUsingStatFilter.value) {
     return statFilterResource.loading
-  } else if (isUsingSuggestionFilter.value) {
-    return suggestionFilterResource.loading
   }
   return issuesResource.loading
 })
@@ -252,61 +231,14 @@ const handleSort = ({ field, direction }) => {
   filters.value.sortBy = newSortOrder
 }
 
-// Handle suggestion selection from search
+// Handle suggestion selection from search - now just opens issue in new tab
 const handleSuggestionSelected = (suggestion) => {
-  // Switch to suggestion-based filtering mode
-  isUsingSuggestionFilter.value = true
-  currentSuggestion.value = suggestion
-
-  // Set search query to show the selected suggestion in the search box
-  searchQuery.value = suggestion.subject || suggestion.name
-
-  // Reset to first page when suggestion is selected
-  currentPage.value = 1
-
-  // Determine suggestion type based on what was clicked
-  // For now, we'll use "name" as the default type for exact match
-  const suggestionType = "name"
-  const suggestionValue = suggestion.name
-
-  // Filter issues using the new suggestion-based API
-  filterIssuesBySuggestion(suggestionType, suggestionValue, {
-    limit_page_length: itemsPerPage.value,
-    limit_start: 0,
-    order_by: sortOrder.value,
-  })
-
-  // Get count for pagination
-  getFilteredIssuesCountBySuggestion(suggestionType, suggestionValue)
-}
-
-// Function to clear suggestion filter and return to normal search
-const clearSuggestionFilter = () => {
-  isUsingSuggestionFilter.value = false
-  currentSuggestion.value = null
-  searchQuery.value = ""
-  
-  // Reset to first page
-  currentPage.value = 1
-  
-  // Reload with normal filters (excluding search)
-  reloadIssues({
-    filters: nonSearchFilters.value,
-    order_by: sortOrder.value,
-    limit_page_length: itemsPerPage.value,
-    limit_start: 0,
-  })
-  
-  // Reload count
-  getIssuesCount(nonSearchFilters.value)
+  // Suggestions now open issues in new tabs - no filtering needed
+  // The CustomSearchBox component handles opening the issue in a new tab
 }
 
 // Handle stat filter changes from IssueStats component
 const handleStatFilterChanged = (statType) => {
-  // Exit other filter modes
-  isUsingSuggestionFilter.value = false
-  currentSuggestion.value = null
-  
   // Set stat filter mode
   isUsingStatFilter.value = true
   currentStatFilter.value = statType
@@ -388,16 +320,6 @@ const handlePageChange = ({ page, itemsPerPage: newItemsPerPage, offset }) => {
       limit_start: offset,
       order_by: sortOrder.value,
     })
-  } else if (isUsingSuggestionFilter.value && currentSuggestion.value) {
-    // Use suggestion-based filtering for pagination
-    const suggestionType = "name"
-    const suggestionValue = currentSuggestion.value.name
-
-    filterIssuesBySuggestion(suggestionType, suggestionValue, {
-      limit_page_length: newItemsPerPage,
-      limit_start: offset,
-      order_by: sortOrder.value,
-    })
   } else {
     // Use regular filtering for pagination (excluding search)
     reloadIssues({
@@ -446,12 +368,7 @@ const debouncedFilterChange = () => {
     clearTimeout(filterChangeTimeout)
   }
   filterChangeTimeout = setTimeout(() => {
-    // If user is changing filters (not search), exit special filter modes
-    if (isUsingSuggestionFilter.value) {
-      isUsingSuggestionFilter.value = false
-      currentSuggestion.value = null
-    }
-    
+    // If user is changing filters (not search), exit stat filter mode
     if (isUsingStatFilter.value) {
       isUsingStatFilter.value = false
       currentStatFilter.value = 'team_tickets'
@@ -481,16 +398,7 @@ watch(
   { deep: true },
 )
 
-// Watch for search query changes to handle clearing the search
-watch(
-  searchQuery,
-  (newSearchQuery) => {
-    // If search is cleared and we were in suggestion mode, return to normal view
-    if (!newSearchQuery && isUsingSuggestionFilter.value) {
-      clearSuggestionFilter()
-    }
-  }
-)
+// Search query changes no longer trigger table updates since suggestions open in new tabs
 
 // Note: We intentionally do NOT watch debouncedSearchQuery for table updates
 // The table should only update when:

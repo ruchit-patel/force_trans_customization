@@ -421,8 +421,11 @@ export default {
 				// Check if we have a cached transformation for this issue
 				if (transformationCache.has(cacheKey)) {
 					const cached = transformationCache.get(cacheKey)
-					// Verify the cached data is still valid (status/priority haven't changed)
-					if (cached.originalStatus === issue.status && cached.originalPriority === issue.priority) {
+					// Verify the cached data is still valid (check all important fields)
+					if (cached.originalStatus === issue.status && 
+					    cached.originalPriority === issue.priority &&
+					    cached.originalSubject === issue.subject &&
+					    cached.originalUsersAssigned === JSON.stringify(issue.custom_users_assigned)) {
 						return cached.transformed
 					}
 				}
@@ -444,7 +447,9 @@ export default {
 				transformationCache.set(cacheKey, {
 					transformed,
 					originalStatus: issue.status,
-					originalPriority: issue.priority
+					originalPriority: issue.priority,
+					originalSubject: issue.subject,
+					originalUsersAssigned: JSON.stringify(issue.custom_users_assigned)
 				})
 				
 				return transformed

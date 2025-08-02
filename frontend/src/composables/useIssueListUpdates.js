@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useSocket } from '../socket'
-import { reloadIssues, getIssuesCount, issuesResource, fetchSingleIssue, singleIssueResource } from '../data/issues'
+import { reloadIssues, getIssuesCount, issuesResource, fetchSingleIssue, singleIssueResource, statFilterResource } from '../data/issues'
 
 /**
  * Composable that implements Frappe's list view realtime update pattern
@@ -47,6 +47,12 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
         return
       }
 
+      // Only process updates for existing issues, not newly created ones
+      if (data.action === 'insert' || data.action === 'create') {
+        console.log('📝 Skipping new issue creation update:', data.name)
+        return
+      }
+
       // Add to pending refreshes
       pendingDocumentRefreshes.value.push(data)
       debouncedRefresh()
@@ -73,6 +79,12 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
                   eventName.includes('delete') ? 'delete' : 'update',
           modified_by: data.modified_by || data.owner,
           timestamp: new Date().toISOString()
+        }
+
+        // Only process updates for existing issues, not newly created ones
+        if (listUpdateData.action === 'insert') {
+          console.log('📝 Skipping new issue creation update:', data.name)
+          return
         }
 
         pendingDocumentRefreshes.value.push(listUpdateData)
@@ -146,16 +158,15 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
 
   const updateIndividualRows = async (documentNames) => {
     try {
-      // If a custom refresh function is provided, use it instead of the default logic
-      if (customRefreshFunction && typeof customRefreshFunction === 'function') {
-        await customRefreshFunction()
-        return
-      }
+      // Determine which resource is currently active and get its data
+      const { activeResource, currentData } = getCurrentActiveResource()
       
-      // Fallback to default logic if no custom refresh function
-      // Check if we have current data
-      if (!issuesResource.data || !Array.isArray(issuesResource.data)) {
-        throw new Error('No issues data available')
+      if (!currentData || !Array.isArray(currentData)) {
+        console.log('📋 No current data available, falling back to custom refresh')
+        if (customRefreshFunction && typeof customRefreshFunction === 'function') {
+          await customRefreshFunction()
+        }
+        return
       }
       
       // Get the current pagination and filter parameters from the component
@@ -177,23 +188,110 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
           console.warn('Error getting current parameters, using defaults:', paramError)
         }
       }
+
+      // Smart update: Only update if the changed issues are visible on current page
+      const visibleIssueNames = currentData.map(issue => issue.name)
+      const updatedVisibleIssues = documentNames.filter(name => visibleIssueNames.includes(name))
       
-      // Reload the issues resource with current parameters
-      // This maintains the user's current view (filters, sort, pagination)
-      await issuesResource.reload(currentParams)
+      if (updatedVisibleIssues.length === 0) {
+        console.log('📋 Updated issues not visible on current page, skipping grid update')
+        return
+      }
+
+      console.log(`🔄 Updating ${updatedVisibleIssues.length} visible issues:`, updatedVisibleIssues)
+      
+      // Fetch updated data for only the visible issues and merge with current data
+      await updateVisibleIssuesInPlace(updatedVisibleIssues, activeResource, currentData)
       
     } catch (error) {
       console.error('Error during targeted refresh:', error)
+      // Fallback to custom refresh function if smart update fails
+      if (customRefreshFunction && typeof customRefreshFunction === 'function') {
+        await customRefreshFunction()
+      }
       throw error
     }
   }
 
-  const shouldIncludeInCurrentView = (issue) => {
-    // This is a simplified check - you might want to implement more sophisticated
-    // filtering logic based on current filters, search terms, etc.
-    // For now, we'll include all new issues
-    return true
+  const getCurrentActiveResource = () => {
+    // Determine which resource is currently active based on data availability
+    // Priority: statFilterResource > issuesResource
+    
+    if (statFilterResource.data && Array.isArray(statFilterResource.data) && statFilterResource.data.length > 0) {
+      return {
+        activeResource: statFilterResource,
+        currentData: statFilterResource.data,
+        resourceType: 'stat'
+      }
+    }
+    
+    // Default to main issues resource
+    return {
+      activeResource: issuesResource,
+      currentData: issuesResource.data || [],
+      resourceType: 'main'
+    }
   }
+
+  const updateVisibleIssuesInPlace = async (visibleIssueNames, activeResource, currentData) => {
+    try {
+      // Fetch the updated issues individually
+      const updatedIssues = await Promise.all(
+        visibleIssueNames.map(async (issueName) => {
+          try {
+            await fetchSingleIssue(issueName)
+            return singleIssueResource.data
+          } catch (error) {
+            console.warn(`Failed to fetch updated issue ${issueName}:`, error)
+            return null
+          }
+        })
+      )
+
+      // Filter out any failed fetches
+      const validUpdatedIssues = updatedIssues.filter(issue => issue !== null)
+      
+      if (validUpdatedIssues.length === 0) {
+        console.warn('No valid updated issues fetched, falling back to custom refresh')
+        if (customRefreshFunction && typeof customRefreshFunction === 'function') {
+          await customRefreshFunction()
+        }
+        return
+      }
+
+      // Update individual issues in place to trigger Vue reactivity efficiently
+      if (activeResource.data && Array.isArray(activeResource.data)) {
+        validUpdatedIssues.forEach(updatedIssue => {
+          const index = activeResource.data.findIndex(issue => issue.name === updatedIssue.name)
+          if (index !== -1) {
+            // Direct property update triggers Vue reactivity efficiently
+            Object.assign(activeResource.data[index], updatedIssue)
+          }
+        })
+      } else {
+        // Fallback to direct assignment if data structure is unexpected
+        const currentIssues = [...currentData]
+        validUpdatedIssues.forEach(updatedIssue => {
+          const index = currentIssues.findIndex(issue => issue.name === updatedIssue.name)
+          if (index !== -1) {
+            currentIssues[index] = updatedIssue
+          }
+        })
+        activeResource.data = currentIssues
+      }
+      
+      console.log(`🎯 Successfully updated ${validUpdatedIssues.length} issues in current view`)
+      
+    } catch (error) {
+      console.error('Error updating visible issues in place:', error)
+      // Fallback to custom refresh function if available
+      if (customRefreshFunction && typeof customRefreshFunction === 'function') {
+        await customRefreshFunction()
+      }
+    }
+  }
+
+
 
   const avoidRealtimeUpdate = () => {
     // Similar to Frappe's avoid_realtime_update() logic
@@ -211,6 +309,29 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
 
     // Add any other conditions where updates should be avoided
     return false
+  }
+
+  // Track page visibility state for focus-based refresh
+  const wasPageHidden = ref(false)
+  
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      // Page became hidden - remember this state
+      wasPageHidden.value = true
+    } else if (wasPageHidden.value) {
+      // Page became visible again after being hidden - refresh the table
+      wasPageHidden.value = false
+      console.log('🔄 Page came back into focus - refreshing Issue table')
+      
+      // Process any pending updates that were skipped while page was hidden
+      if (pendingDocumentRefreshes.value.length > 0) {
+        console.log(`📋 Processing ${pendingDocumentRefreshes.value.length} pending updates`)
+        processDocumentRefreshes()
+      } else {
+        // No pending updates, but still do a manual refresh to ensure data is current
+        manualRefresh()
+      }
+    }
   }
 
   // Manual refresh method (useful for pull-to-refresh or manual refresh buttons)
@@ -254,6 +375,9 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
     socket.on('disconnect', handleDisconnect)
     socket.on('connect_error', handleConnectError)
 
+    // Set up page visibility change listener for focus-based refresh
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     // If already connected, set up immediately
     if (socket.connected) {
       setupRealtimeUpdates()
@@ -266,6 +390,9 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
       socket.off('disconnect', handleDisconnect)
       socket.off('connect_error', handleConnectError)
     }
+    
+    // Remove page visibility change listener
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     
     disableRealtimeUpdates()
     
