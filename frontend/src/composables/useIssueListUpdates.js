@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useSocket } from '../socket'
-import { reloadIssues, getIssuesCount, issuesResource, fetchSingleIssue, singleIssueResource, suggestionFilterResource, statFilterResource } from '../data/issues'
+import { reloadIssues, getIssuesCount, issuesResource, fetchSingleIssue, singleIssueResource, statFilterResource } from '../data/issues'
 
 /**
  * Composable that implements Frappe's list view realtime update pattern
@@ -215,21 +215,13 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
 
   const getCurrentActiveResource = () => {
     // Determine which resource is currently active based on data availability
-    // Priority: statFilterResource > suggestionFilterResource > issuesResource
+    // Priority: statFilterResource > issuesResource
     
     if (statFilterResource.data && Array.isArray(statFilterResource.data) && statFilterResource.data.length > 0) {
       return {
         activeResource: statFilterResource,
         currentData: statFilterResource.data,
         resourceType: 'stat'
-      }
-    }
-    
-    if (suggestionFilterResource.data && Array.isArray(suggestionFilterResource.data) && suggestionFilterResource.data.length > 0) {
-      return {
-        activeResource: suggestionFilterResource,
-        currentData: suggestionFilterResource.data,
-        resourceType: 'suggestion'
       }
     }
     
