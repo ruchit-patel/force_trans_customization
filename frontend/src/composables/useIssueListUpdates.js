@@ -213,6 +213,29 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
     return false
   }
 
+  // Track page visibility state for focus-based refresh
+  const wasPageHidden = ref(false)
+  
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      // Page became hidden - remember this state
+      wasPageHidden.value = true
+    } else if (wasPageHidden.value) {
+      // Page became visible again after being hidden - refresh the table
+      wasPageHidden.value = false
+      console.log('🔄 Page came back into focus - refreshing Issue table')
+      
+      // Process any pending updates that were skipped while page was hidden
+      if (pendingDocumentRefreshes.value.length > 0) {
+        console.log(`📋 Processing ${pendingDocumentRefreshes.value.length} pending updates`)
+        processDocumentRefreshes()
+      } else {
+        // No pending updates, but still do a manual refresh to ensure data is current
+        manualRefresh()
+      }
+    }
+  }
+
   // Manual refresh method (useful for pull-to-refresh or manual refresh buttons)
   const manualRefresh = () => {
     pendingDocumentRefreshes.value = [] // Clear any pending
@@ -254,6 +277,9 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
     socket.on('disconnect', handleDisconnect)
     socket.on('connect_error', handleConnectError)
 
+    // Set up page visibility change listener for focus-based refresh
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     // If already connected, set up immediately
     if (socket.connected) {
       setupRealtimeUpdates()
@@ -266,6 +292,9 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
       socket.off('disconnect', handleDisconnect)
       socket.off('connect_error', handleConnectError)
     }
+    
+    // Remove page visibility change listener
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     
     disableRealtimeUpdates()
     
