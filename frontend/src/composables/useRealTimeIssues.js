@@ -18,6 +18,10 @@ export function useRealTimeIssues() {
     isConnected.value = true
     console.log('Socket connected for real-time issue updates')
     
+    // Subscribe to Issue doctype updates
+    socket.emit('doctype_subscribe', 'Issue')
+    console.log('Subscribed to Issue doctype updates')
+    
     // Stop polling since socket is working
     stopPolling()
   }
@@ -30,11 +34,11 @@ export function useRealTimeIssues() {
     startPolling()
   }
 
-  // Handle Frappe's standard doctype_update event for Issue
-  const handleDocTypeUpdate = (data) => {
+  // Handle Frappe's built-in list_update event
+  const handleListUpdate = (data) => {
     // Check if this is an Issue update
-    if (data.doctype === 'Issue') {
-      console.log('Issue updated via Frappe socket:', data)
+    if (data?.doctype === 'Issue') {
+      console.log('Issue list_update via Frappe socket:', data)
       
       lastUpdate.value = {
         type: 'updated',
@@ -52,62 +56,6 @@ export function useRealTimeIssues() {
       })
 
       // Refresh the issue list to show changes
-      refreshIssues()
-    }
-  }
-
-  // Handle Frappe's standard doc_update event (alternative event name)
-  const handleDocUpdate = (data) => {
-    if (data.doctype === 'Issue') {
-      console.log('Issue doc_update via Frappe socket:', data)
-      
-      lastUpdate.value = {
-        type: 'updated',
-        doctype: data.doctype,
-        name: data.name,
-        user: data.modified_by || 'Unknown User',
-        timestamp: new Date()
-      }
-
-      addNotification({
-        type: 'info',
-        title: 'Issue Updated',
-        message: `Issue "${data.name}" has been modified`,
-        timestamp: new Date()
-      })
-
-      refreshIssues()
-    }
-  }
-
-  // Handle creation events
-  const handleDocCreate = (data) => {
-    if (data.doctype === 'Issue') {
-      console.log('Issue created via Frappe socket:', data)
-      
-      addNotification({
-        type: 'success', 
-        title: 'New Issue Created',
-        message: `Issue "${data.name}" was created`,
-        timestamp: new Date()
-      })
-
-      refreshIssues()
-    }
-  }
-
-  // Handle deletion events  
-  const handleDocDelete = (data) => {
-    if (data.doctype === 'Issue') {
-      console.log('Issue deleted via Frappe socket:', data)
-      
-      addNotification({
-        type: 'warning',
-        title: 'Issue Deleted', 
-        message: `Issue "${data.name}" was deleted`,
-        timestamp: new Date()
-      })
-
       refreshIssues()
     }
   }
@@ -176,21 +124,18 @@ export function useRealTimeIssues() {
       startPolling()
     })
     
-    // Listen for Frappe's standard socket events
-    socket.on('doctype_update', handleDocTypeUpdate)
-    socket.on('doc_update', handleDocUpdate)  // Alternative event name
-    socket.on('doc_create', handleDocCreate)
-    socket.on('doc_delete', handleDocDelete)
-    
-    // Also listen for more specific Issue events if they exist
-    socket.on('Issue_update', handleDocTypeUpdate)
-    socket.on('Issue_create', handleDocCreate)
-    socket.on('Issue_delete', handleDocDelete)
+    // Listen for Frappe's built-in list_update event
+    socket.on('list_update', handleListUpdate)
+
+    // Subscribe to Issue doctype updates (like Frappe's ListView does)
+    if (socket.connected) {
+      socket.emit('doctype_subscribe', 'Issue')
+    }
 
     // Initial connection status
     isConnected.value = socket.connected
     
-    console.log('Socket listeners setup for Frappe events')
+    console.log('Socket listeners setup for Frappe list_update event')
     console.log('Socket connected:', socket.connected)
   }
 
@@ -199,13 +144,10 @@ export function useRealTimeIssues() {
 
     socket.off('connect', handleConnect)
     socket.off('disconnect', handleDisconnect)
-    socket.off('doctype_update', handleDocTypeUpdate)
-    socket.off('doc_update', handleDocUpdate)
-    socket.off('doc_create', handleDocCreate)
-    socket.off('doc_delete', handleDocDelete)
-    socket.off('Issue_update', handleDocTypeUpdate)
-    socket.off('Issue_create', handleDocCreate)
-    socket.off('Issue_delete', handleDocDelete)
+    socket.off('list_update', handleListUpdate)
+    
+    // Unsubscribe from Issue doctype
+    socket.emit('doctype_unsubscribe', 'Issue')
   }
 
   // Setup and cleanup
