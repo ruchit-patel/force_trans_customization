@@ -19,15 +19,15 @@ s3_client = boto3.client('s3')
 http = urllib3.PoolManager()
 
 # Configuration - Update these values
-# FRAPPE_BASE_URL = "https://bda3974fbea5.ngrok-free.app"  # Update with your Frappe URL
-# FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.test"  # Update endpoint
-# FRAPPE_API_KEY = "2ae35805831d36f"  # Optional: for authentication
-# FRAPPE_API_SECRET = "87eb7ee488899a1"  # Optional: for authentication
-
-FRAPPE_BASE_URL = "https://force-trans.v.frappe.cloud"  # Update with your Frappe URL
+FRAPPE_BASE_URL = "https://1e58a4f6b56d.ngrok-free.app"  # Update with your Frappe URL
 FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.test"  # Update endpoint
-FRAPPE_API_KEY = "7cbc2d5765876b8"  # Optional: for authentication
-FRAPPE_API_SECRET = "8e1e71bcd05a251"  # Optional: for authentication
+FRAPPE_API_KEY = "2ae35805831d36f"  # Optional: for authentication
+FRAPPE_API_SECRET = "87eb7ee488899a1"  # Optional: for authentication
+
+# FRAPPE_BASE_URL = "https://force-trans.v.frappe.cloud"  # Update with your Frappe URL
+# FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.test"  # Update endpoint
+# FRAPPE_API_KEY = "7cbc2d5765876b8"  # Optional: for authentication
+# FRAPPE_API_SECRET = "8e1e71bcd05a251"  # Optional: for authentication
 
 def lambda_handler(event, context):
     try:
@@ -174,7 +174,7 @@ def read_email_from_s3(bucket, key):
         return None
 
 def parse_email(email_content):
-    """Parse email content and extract components"""
+    """Parse email content and extract components with proper ordering"""
     try:
         # Parse the email
         msg = email.message_from_bytes(email_content)
@@ -190,35 +190,85 @@ def parse_email(email_content):
             'headers': dict(msg.items())
         }
         
-        # Extract body and attachments
+        # Extract body and attachments with proper ordering
         if msg.is_multipart():
+            # First pass: extract HTML content to analyze CID order
+            html_content = ""
             for part in msg.walk():
                 content_type = part.get_content_type()
                 content_disposition = str(part.get("Content-Disposition", ""))
                 
-                # Extract body
+                if content_type == "text/html" and "attachment" not in content_disposition:
+                    body = part.get_payload(decode=True)
+                    if body:
+                        html_content = body.decode('utf-8', errors='ignore')
+                        parsed_data['body_html'] = html_content
+                        break
+            
+            # Extract CID order from HTML content
+            cid_order = []
+            if html_content:
+                import re
+                cid_pattern = r'src="cid:([^"]+)"'
+                for match in re.finditer(cid_pattern, html_content):
+                    cid_id = match.group(1)
+                    if cid_id not in cid_order:
+                        cid_order.append(cid_id)
+            
+            # Second pass: extract content and collect attachments
+            all_attachments = []
+            
+            for part in msg.walk():
+                content_type = part.get_content_type()
+                content_disposition = str(part.get("Content-Disposition", ""))
+                
+                # Extract body text
                 if content_type == "text/plain" and "attachment" not in content_disposition:
                     body = part.get_payload(decode=True)
                     if body:
                         parsed_data['body_text'] = body.decode('utf-8', errors='ignore')
                 
-                elif content_type == "text/html" and "attachment" not in content_disposition:
-                    body = part.get_payload(decode=True)
-                    if body:
-                        parsed_data['body_html'] = body.decode('utf-8', errors='ignore')
-                
-                # Extract attachments
-                elif "attachment" in content_disposition:
+                # Extract attachments and inline images
+                elif "attachment" in content_disposition or "inline" in content_disposition or part.get('Content-ID'):
                     filename = part.get_filename()
-                    if filename:
+                    content_id = part.get('Content-ID')
+                    
+                    if filename or content_id:
                         attachment_data = part.get_payload(decode=True)
                         if attachment_data:
-                            parsed_data['attachments'].append({
-                                'filename': filename,
+                            attachment_info = {
+                                'filename': filename or f"inline_{content_id.strip('<>')}",
                                 'content_type': content_type,
                                 'size': len(attachment_data),
                                 'content': base64.b64encode(attachment_data).decode('utf-8')
-                            })
+                            }
+                            
+                            # Add Content-ID for inline images
+                            if content_id:
+                                clean_cid = content_id.strip('<>')
+                                attachment_info['content_id'] = clean_cid
+                                attachment_info['is_inline'] = True
+                                # Add order index based on HTML appearance
+                                if clean_cid in cid_order:
+                                    attachment_info['html_order'] = cid_order.index(clean_cid)
+                                else:
+                                    attachment_info['html_order'] = 999  # Unknown order
+                            else:
+                                attachment_info['is_inline'] = False
+                                attachment_info['html_order'] = 999  # Regular attachments
+                                
+                            all_attachments.append(attachment_info)
+            
+            # Sort attachments by HTML appearance order for inline images, then by original order
+            inline_images = [att for att in all_attachments if att.get('is_inline', False)]
+            regular_attachments = [att for att in all_attachments if not att.get('is_inline', False)]
+            
+            # Sort inline images by their HTML order
+            inline_images.sort(key=lambda x: x.get('html_order', 999))
+            
+            # Combine: inline images first (in HTML order), then regular attachments
+            parsed_data['attachments'] = inline_images + regular_attachments
+            
         else:
             # Non-multipart message
             body = msg.get_payload(decode=True)
@@ -229,7 +279,13 @@ def parse_email(email_content):
                 else:
                     parsed_data['body_text'] = body.decode('utf-8', errors='ignore')
         
-        logger.info(f"Successfully parsed email - Subject: {parsed_data['subject']}")
+        logger.info(f"Successfully parsed email - Subject: {parsed_data['subject']}, Attachments: {len(parsed_data['attachments'])}")
+        
+        # Log attachment order for debugging
+        for i, att in enumerate(parsed_data['attachments']):
+            if att.get('is_inline'):
+                logger.info(f"Inline image {i+1}: CID={att.get('content_id')}, HTML_order={att.get('html_order')}, Filename={att.get('filename')}")
+        
         return parsed_data
         
     except Exception as e:
@@ -241,7 +297,8 @@ def parse_email(email_content):
             'attachments': [],
             'headers': {}
         }
-
+    
+    
 def send_webhook_to_frappe(payload):
     """Send webhook to Frappe application"""
     try:

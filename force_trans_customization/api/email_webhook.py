@@ -117,6 +117,10 @@ def process_ses_email(email_data):
         
         # Process attachments if any
         if attachments:
+            # Check if HTML content has cid: references and try to match with attachments
+            if body_html and "cid:" in body_html:
+                attachments = match_cid_references_with_attachments(body_html, attachments)
+            
             process_attachments(communication, attachments, email_data)
         
         # Link to relevant documents if possible
@@ -176,19 +180,34 @@ def process_raw_email(raw_email_content):
                     else:
                         body_html = str(payload)
                 
-                # Handle attachments
-                elif 'attachment' in content_disposition or part.get_filename():
+                # Handle attachments and inline images
+                elif 'attachment' in content_disposition or 'inline' in content_disposition or part.get_filename() or part.get('Content-ID'):
                     filename = part.get_filename()
-                    if filename:
-                        filename = decode_email_header(filename)
+                    content_id = part.get('Content-ID')
+                    
+                    if filename or content_id:
+                        if filename:
+                            filename = decode_email_header(filename)
+                        else:
+                            filename = f"inline_{content_id.strip('<>')}" if content_id else "unnamed_attachment"
+                            
                         attachment_data = part.get_payload(decode=True)
                         
-                        attachments.append({
+                        attachment_info = {
                             'filename': filename,
                             'content_type': content_type,
                             'content': attachment_data,
                             'size': len(attachment_data) if attachment_data else 0
-                        })
+                        }
+                        
+                        # Add Content-ID for inline images
+                        if content_id:
+                            attachment_info['content_id'] = content_id.strip('<>')
+                            attachment_info['is_inline'] = True
+                        else:
+                            attachment_info['is_inline'] = False
+                            
+                        attachments.append(attachment_info)
         else:
             # Single part message
             content_type = msg.get_content_type()
@@ -258,6 +277,102 @@ def decode_email_header(header_value):
     except Exception:
         return str(header_value)
 
+
+def match_cid_references_with_attachments(html_content, attachments):
+    """
+    Extract cid: references from HTML content and match them with attachments
+    This version uses both HTML order and attachment metadata for accurate matching
+    """
+    import re
+    
+    # Find all cid: references in HTML content with their positions
+    cid_pattern = r'src="cid:([^"]+)"'
+    cid_matches_with_pos = []
+    for match in re.finditer(cid_pattern, html_content):
+        cid_matches_with_pos.append({
+            'cid': match.group(1),
+            'position': match.start(),
+            'matched': False
+        })
+    
+    if not cid_matches_with_pos:
+        return attachments
+    
+    # Sort CIDs by their position in HTML (preserves original order)
+    cid_matches_with_pos.sort(key=lambda x: x['position'])
+    
+    # Separate image attachments from other attachments
+    inline_images = []
+    regular_attachments = []
+    
+    for attachment in attachments:
+        content_type = attachment.get("content_type", "")
+        is_inline = attachment.get("is_inline", False)
+        
+        if is_inline and content_type.startswith("image/"):
+            inline_images.append(attachment)
+        else:
+            regular_attachments.append(attachment)
+    
+    # If Lambda function provided html_order, use that for sorting
+    if inline_images and any(att.get('html_order') is not None for att in inline_images):
+        inline_images.sort(key=lambda x: x.get('html_order', 999))
+        frappe.log("Using Lambda-provided HTML order for inline images")
+    
+    # Create updated attachments list
+    updated_attachments = []
+    
+    # Method 1: Try to match by content_id if available (most reliable)
+    if inline_images and all(att.get('content_id') for att in inline_images):
+        frappe.log("Using content_id matching for inline images")
+        
+        # Create a map of CID to HTML position
+        cid_to_position = {cid_info['cid']: i for i, cid_info in enumerate(cid_matches_with_pos)}
+        
+        # Sort inline images by their CID's position in HTML
+        def get_html_position(attachment):
+            cid = attachment.get('content_id', '')
+            return cid_to_position.get(cid, 999)
+        
+        inline_images.sort(key=get_html_position)
+        
+        # Add sorted inline images
+        for attachment in inline_images:
+            attachment_copy = attachment.copy()
+            attachment_copy["is_inline"] = True
+            updated_attachments.append(attachment_copy)
+            
+            cid = attachment.get('content_id', '')
+            frappe.log(f"Matched inline image: CID={cid}, Filename={attachment.get('filename', 'unnamed')}")
+    
+    # Method 2: Fallback to order-based matching
+    else:
+        frappe.log("Using order-based matching for inline images")
+        
+        # Match images to CIDs in order of appearance in HTML
+        for i, cid_info in enumerate(cid_matches_with_pos):
+            if i < len(inline_images):
+                # Match the i-th CID with the i-th image attachment
+                attachment_copy = inline_images[i].copy()
+                attachment_copy["content_id"] = cid_info['cid']
+                attachment_copy["is_inline"] = True
+                updated_attachments.append(attachment_copy)
+                
+                frappe.log(f"Order-matched CID '{cid_info['cid']}' (position {i+1}) with attachment '{attachment_copy.get('filename', 'unnamed')}'")
+        
+        # Add any remaining image attachments that couldn't be matched to CIDs
+        for i in range(len(cid_matches_with_pos), len(inline_images)):
+            attachment_copy = inline_images[i].copy()
+            attachment_copy["is_inline"] = False  # Treat as regular attachment
+            updated_attachments.append(attachment_copy)
+    
+    # Add regular attachments
+    for attachment in regular_attachments:
+        attachment_copy = attachment.copy()
+        attachment_copy["is_inline"] = False
+        updated_attachments.append(attachment_copy)
+    
+    return updated_attachments
 
 def find_matching_email_account(primary_recipient, all_recipients):
     """
@@ -495,13 +610,22 @@ def parse_email_address(email_string):
 def process_email_attachments(communication, attachments):
     """
     Process email attachments and save them as File documents
+    Enhanced version with better inline image handling
     """
-    for attachment in attachments:
+    inline_images = {}  # Map content_id to file_url for HTML replacement
+    has_attachments = False
+    
+    # Sort attachments to process inline images first, in correct order
+    inline_attachments = [att for att in attachments if att.get("is_inline", False)]
+    regular_attachments = [att for att in attachments if not att.get("is_inline", False)]
+    
+    # Process inline images first
+    for attachment in inline_attachments:
         try:
             filename = attachment.get("filename")
             content_type = attachment.get("content_type")
             content = attachment.get("content")
-            size = attachment.get("size", 0)
+            content_id = attachment.get("content_id")
             
             if content and filename:
                 # Create File document
@@ -512,13 +636,35 @@ def process_email_attachments(communication, attachments):
                     communication=communication
                 )
                 
-                # Add attachment to communication
-                communication.append("attachments", {
-                    "file_url": file_doc.file_url,
-                    "file_name": filename
-                })
+                # Track inline images for HTML content replacement
+                if content_id:
+                    inline_images[content_id] = file_doc.file_url
+                    frappe.log(f"Processed inline image: CID={content_id}, Filename={filename}, URL={file_doc.file_url}")
+        
+        except Exception as e:
+            frappe.log_error(
+                message=f"Error processing inline image {filename}: {str(e)}",
+                title="Inline Image Processing Error"
+            )
+    
+    # Process regular attachments
+    for attachment in regular_attachments:
+        try:
+            filename = attachment.get("filename")
+            content_type = attachment.get("content_type")
+            content = attachment.get("content")
+            
+            if content and filename:
+                # Create File document
+                file_doc = create_file_document(
+                    filename=filename,
+                    content=content,
+                    content_type=content_type,
+                    communication=communication
+                )
                 
-                frappe.log("Successfully processed attachment: {filename} for communication: {communication.name}")
+                has_attachments = True
+                frappe.log(f"Processed regular attachment: {filename}")
         
         except Exception as e:
             frappe.log_error(
@@ -526,25 +672,54 @@ def process_email_attachments(communication, attachments):
                 title="Attachment Processing Error"
             )
     
-    # Save communication with attachments
-    if communication.attachments:
+    # Replace cid: references in HTML content with actual file URLs
+    if inline_images and communication.content:
+        updated_content = communication.content
+        
+        # Log the replacement process
+        frappe.log(f"Replacing CID references in HTML content. Found {len(inline_images)} inline images.")
+        
+        for content_id, file_url in inline_images.items():
+            # Replace cid:content_id with the actual file URL
+            cid_pattern = f"cid:{content_id}"
+            if cid_pattern in updated_content:
+                updated_content = updated_content.replace(cid_pattern, file_url)
+                frappe.log(f"Replaced {cid_pattern} with {file_url}")
+            else:
+                frappe.log(f"Warning: CID pattern {cid_pattern} not found in HTML content")
+        
+        communication.content = updated_content
+    
+    # Update has_attachment flag
+    if has_attachments or inline_images:
+        if has_attachments:
+            communication.has_attachment = 1
+        
+        # Save communication 
         communication.save(ignore_permissions=True)
         frappe.db.commit()
+        
+        frappe.log(f"Updated communication {communication.name} with {len(inline_images)} inline images and {len(regular_attachments)} regular attachments")
 
 
 def process_attachments(communication, attachments, email_data):
     """
     Process email attachments and save them as File documents
     Legacy function - keeping for backward compatibility
+    Also handles inline images and updates HTML content references
     """
     s3_bucket = email_data.get("s3_bucket")
     s3_key = email_data.get("s3_key")
+    inline_images = {}  # Map content_id to file_url for HTML replacement
+    has_attachments = False
     
     for attachment in attachments:
         try:
             filename = attachment.get("filename")
             content_type = attachment.get("content_type")
             size = attachment.get("size", 0)
+            content_id = attachment.get("content_id")
+            is_inline = attachment.get("is_inline", False)
             
             # If attachment content is provided directly
             if "content" in attachment:
@@ -567,11 +742,13 @@ def process_attachments(communication, attachments, email_data):
                     communication=communication
                 )
                 
-                # Link attachment to communication
-                communication.append("attachments", {
-                    "file_url": file_doc.file_url,
-                    "file_name": filename
-                })
+                # Track if we have any regular attachments (not inline images)
+                if not is_inline:
+                    has_attachments = True
+                
+                # Track inline images for HTML content replacement
+                if is_inline and content_id:
+                    inline_images[content_id] = file_doc.file_url
         
         except Exception as e:
             frappe.log_error(
@@ -579,8 +756,23 @@ def process_attachments(communication, attachments, email_data):
                 title="Attachment Processing Error"
             )
     
-    # Save communication with attachments
-    if communication.attachments:
+    # Replace cid: references in HTML content with actual file URLs
+    if inline_images and communication.content:
+        updated_content = communication.content
+        
+        for content_id, file_url in inline_images.items():
+            # Replace cid:content_id with the actual file URL
+            cid_pattern = f"cid:{content_id}"
+            updated_content = updated_content.replace(cid_pattern, file_url)
+        
+        communication.content = updated_content
+    
+    # Update has_attachment flag
+    if has_attachments:
+        communication.has_attachment = 1
+    
+    # Save communication 
+    if has_attachments or inline_images:
         communication.save(ignore_permissions=True)
         frappe.db.commit()
 
