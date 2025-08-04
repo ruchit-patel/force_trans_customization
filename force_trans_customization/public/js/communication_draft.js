@@ -9,7 +9,7 @@ force_trans_customization.communication_draft = {
     setup_draft_functionality() {
         // Remove auto-save from content field
         const original_get_fields = frappe.views.CommunicationComposer.prototype.get_fields;
-        frappe.views.CommunicationComposer.prototype.get_fields = function() {
+        frappe.views.CommunicationComposer.prototype.get_fields = function () {
             let fields = original_get_fields.call(this);
             // Remove onchange from content field
             fields = fields.map(field => {
@@ -23,7 +23,7 @@ force_trans_customization.communication_draft = {
 
         // Add Save As Draft button after dialog is created
         const original_make = frappe.views.CommunicationComposer.prototype.make;
-        frappe.views.CommunicationComposer.prototype.make = function() {
+        frappe.views.CommunicationComposer.prototype.make = function () {
             original_make.call(this);
             // Add Save As Draft button to dialog footer
             const me = this;
@@ -31,21 +31,21 @@ force_trans_customization.communication_draft = {
             if ($footer.find('.save-as-draft-btn').length === 0) {
                 const $btn = $('<button class="btn btn-default save-as-draft-btn" style="margin-right: 8px;">' + __("Save As Draft") + '</button>');
                 $btn.insertBefore($footer.find('.btn-primary, .btn-secondary').first());
-                $btn.on('click', function() {
+                $btn.on('click', function () {
                     me.save_as_draft();
                 });
             }
         };
 
         const original_save_as_draft = frappe.views.CommunicationComposer.prototype.save_as_draft;
-        frappe.views.CommunicationComposer.prototype.save_as_draft = function() {
+        frappe.views.CommunicationComposer.prototype.save_as_draft = function () {
             if (this.dialog && this.frm) {
                 let form_values = this.dialog.get_values();
                 // Use draft_name if present (editing existing draft)
                 let draft_name = this.draft_name || (form_values && form_values.draft_name);
-                
+
                 console.log("Saving draft with draft_name:", draft_name);
-                
+
                 // Call our server-side save method
                 frappe.call({
                     method: "force_trans_customization.api.email_draft.save_draft",
@@ -61,7 +61,7 @@ force_trans_customization.communication_draft = {
                         email_template: form_values.email_template,
                         draft_name: draft_name
                     },
-                    callback: function(r) {
+                    callback: function (r) {
                         if (r.message && r.message.success) {
                             frappe.show_alert(__("Draft saved"), 3);
                             // Update draft_name for future saves
@@ -86,7 +86,7 @@ force_trans_customization.communication_draft = {
                         }
                     }.bind(this)
                 });
-                
+
                 // Also call the original method for local storage
                 original_save_as_draft.call(this);
             }
@@ -94,44 +94,44 @@ force_trans_customization.communication_draft = {
 
         // Override send_action to handle draft emails and add 30-second delay
         const original_send_action = frappe.views.CommunicationComposer.prototype.send_action;
-        frappe.views.CommunicationComposer.prototype.send_action = async function() {
+        frappe.views.CommunicationComposer.prototype.send_action = async function () {
             // Add 30-second delay to send_after if not specified (for both draft and non-draft)
             let form_values = this.dialog.get_values();
             console.log("=== DEBUG: Communication Draft Send Action ===");
             console.log("Form values:", form_values);
-            
+
             // Check if send_after is already set by user
             const currentSendAfter = form_values ? form_values.send_after : null;
             console.log("Current send_after value:", currentSendAfter);
             console.log("send_after field exists:", 'send_after' in (form_values || {}));
-            
+
             let isDelayedSending = false;
             let communicationName = null;
-            
+
             if (!currentSendAfter) {
                 console.log("send_after is empty, applying 30-second delay");
                 // Calculate 30 seconds from now in Frappe's configured timezone
                 const now = new Date();
                 const sendAfter = new Date(now.getTime() + 30 * 1000);
-                
+
                 // Convert to Frappe's timezone and format properly
                 const sendAfterInTimezone = frappe.datetime.convert_to_user_tz(sendAfter);
                 const formattedDateTime = frappe.datetime.get_datetime_as_string(sendAfterInTimezone);
-                
+
                 console.log("Setting send_after to:", formattedDateTime);
-                
+
                 // Set the send_after value in the dialog
                 await this.dialog.set_value('send_after', formattedDateTime);
-                
+
                 // Debug: Check if the value was set
                 const afterSetValue = this.dialog.get_value('send_after');
                 console.log("After setting send_after, get_value returns:", afterSetValue);
-                
+
                 isDelayedSending = true;
             } else {
                 console.log("send_after is already set, not applying delay");
             }
-            
+
             // Check if this is editing a draft
             if (this.draft_name) {
                 // This is editing a draft, so update the existing draft and send it
@@ -153,17 +153,20 @@ force_trans_customization.communication_draft = {
                         form_values: form_values,
                         selected_attachments: selected_attachments
                     },
-                    callback: function(r) {
+                    callback: function (r) {
                         if (r.message && r.message.success) {
                             communicationName = r.message.communication_name;
-                            
+
+                            // Update response status fields after sending email
+                            this.update_response_status_after_send();
+
                             if (isDelayedSending) {
                                 // Show toast with undo button for delayed sending
                                 this.show_undo_toast(communicationName);
                             } else {
                                 frappe.show_alert(__("Draft sent successfully"), 3);
                             }
-                            
+
                             this.dialog.hide();
                             // Refresh timeline
                             if (this.frm && this.frm.timeline) {
@@ -181,14 +184,17 @@ force_trans_customization.communication_draft = {
             } else {
                 // This is a new email, use the original send action but intercept the result
                 const originalSendAction = original_send_action.bind(this);
-                
+
+                // Update response status fields after sending email
+                this.update_response_status_after_send();
+
                 // Override the original send action to capture the communication name
                 original_send_action.call(this);
-                
+
                 // If delayed sending is enabled, we need to find the communication that was just created
                 if (isDelayedSending) {
                     // Wait a bit for the communication to be created, then find it
-                    setTimeout(function() {
+                    setTimeout(function () {
                         this.find_recent_communication_and_show_undo();
                     }.bind(this), 1000);
                 }
@@ -197,7 +203,7 @@ force_trans_customization.communication_draft = {
 
         // Override the get_earlier_reply function to format quoted content properly
         const original_get_earlier_reply = frappe.views.CommunicationComposer.prototype.get_earlier_reply;
-        frappe.views.CommunicationComposer.prototype.get_earlier_reply = function() {
+        frappe.views.CommunicationComposer.prototype.get_earlier_reply = function () {
             this.reply_set = false;
 
             const last_email = this.last_email || (this.frm && this.frm.timeline.get_last_email(true));
@@ -235,13 +241,13 @@ force_trans_customization.communication_draft = {
         };
 
         // New function to clean HTML content
-        frappe.views.CommunicationComposer.prototype.clean_html_content = function(html) {
+        frappe.views.CommunicationComposer.prototype.clean_html_content = function (html) {
             if (!html) return "";
-            
+
             // Create a temporary div to parse HTML
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
-            
+
             // Remove table elements that cause unwanted formatting
             const tablesToRemove = tempDiv.querySelectorAll('table, tbody, thead, tr, td, th');
             tablesToRemove.forEach(el => {
@@ -261,7 +267,7 @@ force_trans_customization.communication_draft = {
                     el.remove();
                 }
             });
-            
+
             // Convert block elements to preserve line breaks
             const blockElements = tempDiv.querySelectorAll('div, p, br');
             blockElements.forEach(el => {
@@ -277,7 +283,7 @@ force_trans_customization.communication_draft = {
                     }
                 }
             });
-            
+
             // Handle blockquotes specially to preserve structure
             const blockquotes = tempDiv.querySelectorAll('blockquote');
             blockquotes.forEach(blockquote => {
@@ -288,53 +294,53 @@ force_trans_customization.communication_draft = {
                     blockquote.remove();
                 }
             });
-            
+
             // Remove other complex elements that can cause formatting issues
             const complexElements = tempDiv.querySelectorAll('iframe, object, embed, style, script');
             complexElements.forEach(el => el.remove());
-            
+
             // Get the text content and clean it up
             let content = tempDiv.textContent || tempDiv.innerText || "";
-            
+
             // Clean up excessive whitespace while preserving line breaks
             content = content
                 .replace(/[ \t]+/g, ' ')        // Multiple spaces/tabs to single space
                 .replace(/\n{3,}/g, '\n\n')     // More than 2 line breaks to 2
                 .replace(/^\s+|\s+$/gm, '')     // Remove leading/trailing spaces from lines
                 .trim();                        // Remove leading/trailing whitespace
-            
+
             // Ensure email headers (On [date]...) start on new lines
             // First handle cases where there's text immediately before "On"
             content = content.replace(/([a-zA-Z0-9!.\-\s])On\s+(\d{1,2}(st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|\w{3})\s+\d{4})/g, '$1\nOn $2');
-            
+
             // Also handle Gmail-style email headers "On ... at ... wrote:"
             content = content.replace(/([a-zA-Z0-9!.\-\s])On\s+([A-Z][a-z]{2},\s+[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s+(AM|PM))/g, '$1\nOn $2');
-            
+
             // Ensure "Sent via" also starts on new line
             content = content.replace(/([a-zA-Z0-9!.\-\s])(Sent via)/g, '$1\n$2');
-            
+
             // Remove duplicate "Sent via ERPNext" signatures (keep only the first one)
             const sentViaRegex = /Sent via\s*ERPNext/gi;
             const matches = content.match(sentViaRegex);
             if (matches && matches.length > 1) {
                 // Replace all occurrences except the first one
                 let count = 0;
-                content = content.replace(sentViaRegex, function(match) {
+                content = content.replace(sentViaRegex, function (match) {
                     count++;
                     return count === 1 ? match : '';
                 });
             }
-            
+
             // Clean up any extra line breaks left by removing signatures
             content = content.replace(/\n{3,}/g, '\n\n');
-            
+
             // Convert back to HTML with proper line breaks
             content = content.replace(/\n/g, '<br>');
-            
+
             return content;
         };
 
-        frappe.views.CommunicationComposer.prototype.html2text = function(html) {
+        frappe.views.CommunicationComposer.prototype.html2text = function (html) {
             // convert HTML to text and try and preserve whitespace
             html = html
                 .replace(/<\/div>/g, "<br></div>") // replace end of blocks
@@ -342,33 +348,33 @@ force_trans_customization.communication_draft = {
                 .replace(/<br>/g, "\n");
 
             const text = frappe.utils.html2text(html);
-            
+
             // Clean up excessive newlines and spacing
             return text
                 .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
                 .replace(/ +/g, " ") // Replace multiple spaces with single space
                 .replace(/^\s+|\s+$/gm, ""); // Remove leading/trailing whitespace from each line
         };
-        
+
         // Add method to show undo toast
-        frappe.views.CommunicationComposer.prototype.show_undo_toast = function(communicationName) {
+        frappe.views.CommunicationComposer.prototype.show_undo_toast = function (communicationName) {
             if (!communicationName) return;
-            
+
             const toast = frappe.show_alert({
-                message: __("Email will be sent in 30 seconds. ") + 
+                message: __("Email will be sent in 30 seconds. ") +
                     ` <a class="text-small text-muted undo-email-btn" href="#" data-communication="${communicationName}" style="font-weight: bold; text-decoration: underline;">${__("Undo")}</a>`,
                 indicator: "yellow"
             }, 30);
-            
+
             // Add click handler for undo button
-            toast.find('.undo-email-btn').on('click', function() {
+            toast.find('.undo-email-btn').on('click', function () {
                 const commName = this.draft_name || communicationName;
                 frappe.call({
                     method: "force_trans_customization.api.email_draft.undo_scheduled_email",
                     args: {
                         communication_name: commName
                     },
-                    callback: function(r) {
+                    callback: function (r) {
                         if (r.message && r.message.success) {
                             frappe.show_alert(__("Email sending cancelled"), 3);
                             // Refresh timeline
@@ -384,14 +390,14 @@ force_trans_customization.communication_draft = {
                         }
                     }.bind(this)
                 });
-                
+
                 // Remove the toast
                 toast.remove();
             }.bind(this));
         };
 
         // Add method to find recent communication and show undo
-        frappe.views.CommunicationComposer.prototype.find_recent_communication_and_show_undo = function() {
+        frappe.views.CommunicationComposer.prototype.find_recent_communication_and_show_undo = function () {
             // Use our custom server-side method to get the most recent communication
             frappe.call({
                 method: "force_trans_customization.api.email_draft.get_recent_communication",
@@ -400,7 +406,7 @@ force_trans_customization.communication_draft = {
                     docname: this.frm.docname,
                     minutes: 1
                 },
-                callback: function(r) {
+                callback: function (r) {
                     console.log("Recent communication result:", r.message);
                     if (r.message && r.message.name) {
                         console.log("Using communication:", r.message.name, "created at:", r.message.creation);
@@ -412,18 +418,55 @@ force_trans_customization.communication_draft = {
             });
         };
 
+        // Add method to update response status after sending email
+        frappe.views.CommunicationComposer.prototype.update_response_status_after_send = function () {
+            // Only update if this is an Issue doctype
+            if (this.frm && this.frm.doctype === "Issue") {
+                console.log("Updating response status after email send for Issue:", this.frm.docname);
+
+                // Set "Awaiting Customer Response" to true and "Customer Awaits Reply" to false
+                const updates = {
+                    custom_is_response_awaited: 1,
+                    custom_is_response_expected: 0
+                };
+
+                // Update the form values
+                this.frm.set_value('custom_is_response_awaited', 1);
+                this.frm.set_value('custom_is_response_expected', 0);
+
+                // Save the form silently
+                this.frm.save().then(() => {
+                    console.log("Response status updated successfully after email send");
+
+                    // Refresh the response status buttons if they exist
+                    if (typeof add_response_status_buttons === 'function') {
+                        add_response_status_buttons(this.frm);
+                    }
+
+                    // Show a subtle notification
+                    frappe.show_alert({
+                        message: __("Issue marked as awaiting customer response"),
+                        indicator: "blue"
+                    }, 3);
+                }).catch((error) => {
+                    console.error("Error updating response status after email send:", error);
+                    // Don't show error to user as this is a background operation
+                });
+            }
+        };
+
     },
 
     delete_draft(draft_name) {
         frappe.confirm(
             __("Are you sure you want to delete this draft?"),
-            function() {
+            function () {
                 frappe.call({
                     method: "force_trans_customization.api.email_draft.delete_draft",
                     args: {
                         draft_name: draft_name
                     },
-                    callback: function(r) {
+                    callback: function (r) {
                         if (r.message && r.message.success) {
                             frappe.show_alert(__("Draft deleted"), 3);
                             // Refresh timeline
@@ -444,7 +487,7 @@ force_trans_customization.communication_draft = {
     }
 };
 
-force_trans_customization.communication_draft.open_composer_with_draft = function(draft_doc) {
+force_trans_customization.communication_draft.open_composer_with_draft = function (draft_doc) {
     // Open the CommunicationComposer dialog with draft_doc's data
     const composer = new frappe.views.CommunicationComposer({
         doc: cur_frm.doc,
@@ -464,6 +507,6 @@ force_trans_customization.communication_draft.open_composer_with_draft = functio
 };
 
 // Initialize when page loads
-$(function() {
+$(function () {
     force_trans_customization.communication_draft.init();
 }); 

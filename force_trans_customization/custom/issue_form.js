@@ -18,6 +18,8 @@ frappe.ui.form.on("Issue", {
 		collection3[0].hidden=true;
 		// Add "Assign to Me" button
 		add_assign_to_me_button(frm);
+		// Add response status buttons
+		add_response_status_buttons(frm);
 	},
 
 	    // Remove add_edit_draft_buttons logic
@@ -316,6 +318,61 @@ function add_assign_to_me_button(frm) {
 			}).addClass('btn-primary');
 		}
 	});
+}
+
+// Function to add response status buttons
+function add_response_status_buttons(frm) {
+	// Remove existing response status buttons if they exist
+	frm.remove_custom_button('Awaiting Customer Response');
+	frm.remove_custom_button('Customer Awaits Reply');
+	frm.remove_custom_button('✓ Awaiting Customer Response');
+	frm.remove_custom_button('✓ Customer Awaits Reply');
+	frm.remove_custom_button('Clear Response Status');
+	
+	const is_response_awaited = frm.doc.custom_is_response_awaited;
+	const is_response_expected = frm.doc.custom_is_response_expected;
+	
+	// Add "Awaiting Customer Response" button
+	if (is_response_awaited) {
+		// Button shows active state - clicking will clear it
+		frm.add_custom_button('✓ Awaiting Customer Response', function() {
+			toggle_response_awaited_status(frm, false);
+		}).addClass('btn-success').css({
+			'background-color': '#4caf50',
+			'border-color': '#4caf50',
+			'color': 'white'
+		});
+	} else {
+		// Button shows inactive state - clicking will set it
+		frm.add_custom_button('Awaiting Customer Response', function() {
+			toggle_response_awaited_status(frm, true);
+		}).addClass('btn-warning').css({
+			'background-color': '#ff9800',
+			'border-color': '#ff9800',
+			'color': 'white'
+		});
+	}
+	
+	// Add "Customer Awaits Reply" button  
+	if (is_response_expected) {
+		// Button shows active state - clicking will clear it
+		frm.add_custom_button('✓ Customer Awaits Reply', function() {
+			toggle_response_expected_status(frm, false);
+		}).addClass('btn-success').css({
+			'background-color': '#4caf50',
+			'border-color': '#4caf50',
+			'color': 'white'
+		});
+	} else {
+		// Button shows inactive state - clicking will set it
+		frm.add_custom_button('Customer Awaits Reply', function() {
+			toggle_response_expected_status(frm, true);
+		}).addClass('btn-info').css({
+			'background-color': '#2196f3',
+			'border-color': '#2196f3',
+			'color': 'white'
+		});
+	}
 }
 
 // Function to assign current user to the issue using BOTH custom field AND ERPNext's native assignment
@@ -716,6 +773,88 @@ function check_user_assignment(frm, user) {
 			}
 		});
 	});
+}
+
+// Function to toggle "Is Response Awaited" status
+function toggle_response_awaited_status(frm, new_value) {
+	const current_value = frm.doc.custom_is_response_awaited;
+	const action = new_value ? 'mark as awaiting' : 'remove awaiting status from';
+	const status_text = new_value ? 'awaiting customer response' : 'not awaiting customer response';
+	
+	frappe.confirm(
+		__(`Are you sure you want to ${action} customer response for this issue?<br><br>This will set the issue status to: <strong>${status_text}</strong>`),
+		function() {
+			// User confirmed
+			frm.set_value('custom_is_response_awaited', new_value ? 1 : 0);
+			
+			// If setting to awaited, clear the expected flag
+			if (new_value) {
+				frm.set_value('custom_is_response_expected', 0);
+			}
+			
+			frm.save().then(() => {
+				frappe.msgprint({
+					title: __('Success'),
+					message: __(`Issue has been ${new_value ? 'marked as awaiting customer response' : 'unmarked from awaiting customer response'}.`),
+					indicator: 'green'
+				});
+				
+				// Refresh buttons to update their state
+				add_response_status_buttons(frm);
+			}).catch((error) => {
+				frappe.msgprint({
+					title: __('Error'),
+					message: __('Failed to update response status. Please try again.'),
+					indicator: 'red'
+				});
+				console.error('Save error:', error);
+			});
+		},
+		function() {
+			// User cancelled - do nothing
+		}
+	);
+}
+
+// Function to toggle "Is Response Expected" status
+function toggle_response_expected_status(frm, new_value) {
+	const current_value = frm.doc.custom_is_response_expected;
+	const action = new_value ? 'mark as expecting' : 'remove expecting status from';
+	const status_text = new_value ? 'customer awaits reply' : 'customer does not await reply';
+	
+	frappe.confirm(
+		__(`Are you sure you want to ${action} a reply for this issue?<br><br>This will set the issue status to: <strong>${status_text}</strong>`),
+		function() {
+			// User confirmed
+			frm.set_value('custom_is_response_expected', new_value ? 1 : 0);
+			
+			// If setting to expected, clear the awaited flag
+			if (new_value) {
+				frm.set_value('custom_is_response_awaited', 0);
+			}
+			
+			frm.save().then(() => {
+				frappe.msgprint({
+					title: __('Success'),
+					message: __(`Issue has been ${new_value ? 'marked as customer awaits reply' : 'unmarked from customer awaits reply'}.`),
+					indicator: 'green'
+				});
+				
+				// Refresh buttons to update their state
+				add_response_status_buttons(frm);
+			}).catch((error) => {
+				frappe.msgprint({
+					title: __('Error'),
+					message: __('Failed to update response status. Please try again.'),
+					indicator: 'red'
+				});
+				console.error('Save error:', error);
+			});
+		},
+		function() {
+			// User cancelled - do nothing
+		}
+	);
 }
 
 // --- PATCH: Inject Issue Labels as read-only tags in Email Composer dialog ---
