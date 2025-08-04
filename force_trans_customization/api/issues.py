@@ -390,7 +390,9 @@ def get_issue_stats():
             fields=[
                 "name",
                 "status",
-                "raised_by"
+                "raised_by",
+                "custom_is_response_awaited",
+                "custom_is_response_expected"
             ],
             limit_page_length=0,  # Get all records
             ignore_permissions=False
@@ -467,12 +469,12 @@ def get_issue_stats():
             if not has_team_assignment:
                 stats["open_tickets"] += 1
             
-            # Actionable tickets: status is "Open" or "Replied"
-            if issue_status in ["Open", "Replied"]:
+            # Actionable tickets: Customer awaits reply (custom_is_response_expected = 1)
+            if issue.custom_is_response_expected:
                 stats["actionable_tickets"] += 1
             
-            # Response tickets: status is "Replied"
-            if issue_status == "Replied":
+            # Response tickets: Awaiting customer response (custom_is_response_awaited = 1)
+            if issue.custom_is_response_awaited:
                 stats["response_tickets"] += 1
         
         return stats
@@ -610,11 +612,11 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                 issues = []
         
         elif stat_type == "actionable_tickets":
-            # Issues with "Open" or "Replied" status
+            # Issues where customer awaits reply (custom_is_response_expected = 1)
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
-                filters={"status": ["in", ["Open", "Replied"]]},
+                filters={"custom_is_response_expected": 1},
                 order_by=order_by,
                 limit_page_length=limit_page_length,
                 limit_start=limit_start,
@@ -622,11 +624,11 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             )
         
         elif stat_type == "response_tickets":
-            # Issues with "Replied" status
+            # Issues awaiting customer response (custom_is_response_awaited = 1)
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
-                filters={"status": "Replied"},
+                filters={"custom_is_response_awaited": 1},
                 order_by=order_by,
                 limit_page_length=limit_page_length,
                 limit_start=limit_start,
@@ -763,7 +765,7 @@ def get_stat_filter_count(stat_type):
         elif stat_type == "actionable_tickets":
             result = frappe.get_list(
                 "Issue",
-                filters={"status": ["in", ["Open", "Replied"]]},
+                filters={"custom_is_response_expected": 1},
                 limit_page_length=0,
                 as_list=True,
                 ignore_permissions=False
@@ -773,7 +775,7 @@ def get_stat_filter_count(stat_type):
         elif stat_type == "response_tickets":
             result = frappe.get_list(
                 "Issue",
-                filters={"status": "Replied"},
+                filters={"custom_is_response_awaited": 1},
                 limit_page_length=0,
                 as_list=True,
                 ignore_permissions=False
