@@ -30,12 +30,12 @@
             </span>
           </button>
 
-          <!-- Active Filters - Inline compact display -->
-          <div v-if="dynamicFilters.length > 0" class="flex items-center flex-1 overflow-x-auto flex-wrap gap-2">
-            <div v-for="(filter, index) in dynamicFilters" :key="filter.id" 
-              class="flex items-center space-x-1 bg-gray-100 rounded px-2 py-1 text-sm whitespace-nowrap">
-              <span class="text-gray-600 font-medium">{{ getFieldLabel(filter.field) }}</span>
-              <span class="text-gray-500">{{ filter.operator }}</span>
+          <!-- Active Filters - Inline compact display (show applied filters) -->
+          <div v-if="appliedFilters.length > 0" class="flex items-center flex-1 overflow-x-auto flex-wrap gap-2">
+            <div v-for="(filter, index) in appliedFilters" :key="filter.id" 
+              class="flex items-center space-x-1 bg-green-100 border border-green-200 rounded px-2 py-1 text-sm whitespace-nowrap">
+              <span class="text-green-800 font-medium">{{ getFieldLabel(filter.field) }}</span>
+              <span class="text-green-600">{{ filter.operator }}</span>
               <!-- Special display for tags with colors -->
               <span v-if="filter.field === '_user_tags' && filter.value" 
                 :style="getTagStyle(filter.value)"
@@ -43,27 +43,45 @@
                 {{ filter.value }}
               </span>
               <!-- Regular display for other fields -->
-              <span v-else class="text-gray-900">{{ filter.value }}</span>
-              <button @click="removeDynamicFilter(index)"
-                class="text-gray-400 hover:text-red-600 ml-1">
+              <span v-else class="text-green-900">{{ filter.value }}</span>
+              <button @click="removeAppliedFilter(index)"
+                class="text-green-400 hover:text-red-600 ml-1">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
               </button>
             </div>
+            <!-- Show pending changes indicator -->
+            <div v-if="hasPendingChanges" class="inline-flex items-center px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
+              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+              </svg>
+              Pending Changes
+            </div>
           </div>
         </div>
 
         <!-- Right side: Clear and Apply buttons -->
-        <div v-if="dynamicFilters.length > 0" class="flex items-center space-x-2 ml-4">
-          <button @click="clearAllDynamicFilters"
+        <div class="flex items-center space-x-2 ml-4">
+          <!-- Show Clear button if there are any filters OR search query -->
+          <button v-if="dynamicFilters.length > 0 || appliedFilters.length > 0 || localSearchQuery" 
+            @click="clearAllDynamicFilters"
             class="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-            title="Clear all filters and remove from storage">
-            Clear Filters
+            title="Clear all filters and search to show all issues">
+            Clear All
           </button>
-          <button @click="applyFilters"
-            class="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-md hover:bg-gray-800 transition-colors">
-            Apply Filters
+          <!-- Show Apply button only if there are pending filters -->
+          <button v-if="dynamicFilters.length > 0"
+            @click="applyFilters"
+            :class="[
+              'px-4 py-2 text-sm font-medium rounded-md transition-colors',
+              hasPendingChanges 
+                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' 
+                : 'bg-gray-300 text-gray-600 cursor-not-allowed'
+            ]"
+            :disabled="!hasPendingChanges">
+            <span v-if="hasPendingChanges">Apply Filters</span>
+            <span v-else>Filters Applied</span>
           </button>
         </div>
       </div>
@@ -71,7 +89,7 @@
 
     <!-- Frappe-style Filter Panel -->
     <div v-if="showFilterPanel" class="relative">
-      <div class="absolute top-2 left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg">
+      <div class="absolute top-2 left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg" @click.stop>
         <div class="flex">
           <!-- Left Sidebar - Field Selection -->
           <div class="w-48 border-r border-gray-200 bg-gray-50">
@@ -80,7 +98,7 @@
             </div>
             <div class="max-h-64 overflow-y-auto">
               <button v-for="field in availableFields" :key="field.value"
-                @click="addNewFilter(field.value)"
+                @click.stop="addNewFilter(field.value)"
                 class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
                 {{ field.label }}
               </button>
@@ -96,7 +114,10 @@
               
               <div v-else class="space-y-3">
                 <div v-for="(filter, index) in dynamicFilters" :key="filter.id" 
-                  class="flex items-center space-x-3 p-3 bg-gray-50 rounded border">
+                  :class="[
+                    'flex items-center space-x-3 p-3 rounded border',
+                    hasPendingChanges ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+                  ]">
                   
                   <!-- Field Name (read-only) -->
                   <div class="w-24 text-sm font-medium text-gray-700">
@@ -200,12 +221,20 @@
               <!-- Bottom Actions -->
               <div v-if="dynamicFilters.length > 0" class="flex justify-between items-center pt-4 mt-4 border-t border-gray-200">
                 <button @click="clearAllDynamicFilters"
-                  class="text-sm text-gray-600 hover:text-gray-900 transition-colors">
-                  Clear Filters
+                  class="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                  title="Clear all filters and search to show all issues">
+                  Clear All
                 </button>
                 <button @click="applyFilters"
-                  class="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded hover:bg-gray-800 transition-colors">
-                  Apply Filters
+                  :class="[
+                    'px-4 py-2 text-sm font-medium rounded transition-colors',
+                    hasPendingChanges 
+                      ? 'bg-gray-900 text-white hover:bg-gray-800' 
+                      : 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                  ]"
+                  :disabled="!hasPendingChanges">
+                  <span v-if="hasPendingChanges">Apply Filters</span>
+                  <span v-else>Filters Applied</span>
                 </button>
               </div>
             </div>
@@ -277,11 +306,17 @@ const searchBoxRef = ref(null)
 
 // Dynamic filter system state
 const showFilterPanel = ref(false)
-const dynamicFilters = ref([])
+const dynamicFilters = ref([]) // Pending/draft filters (not applied yet)
+const appliedFilters = ref([]) // Currently applied filters
 let filterIdCounter = 0
 
 // Multi-select state for users
 const userInputValue = ref({})
+
+// Track if there are pending changes
+const hasPendingChanges = computed(() => {
+  return JSON.stringify(dynamicFilters.value) !== JSON.stringify(appliedFilters.value)
+})
 
 // localStorage keys
 const STORAGE_KEYS = {
@@ -455,7 +490,7 @@ const focusSearch = () => {
 const handleSearchChange = (value) => {
   localSearchQuery.value = value
   emit("update:searchQuery", value)
-  saveFiltersToStorage()
+  // Search changes apply immediately (not part of filter system)
 }
 
 const handleSuggestionSelected = (suggestion) => {
@@ -573,23 +608,52 @@ const addNewFilter = (fieldValue) => {
     userInputValue.value[newFilter.id] = ''
   }
   
-  showFilterPanel.value = false
-  updateDynamicFiltersOutput()
-  saveFiltersToStorage()
+  // Keep dialog open - don't close it when adding new filter
+  // User should be able to add multiple filters before applying
 }
 
 const removeDynamicFilter = (index) => {
   dynamicFilters.value.splice(index, 1)
-  updateDynamicFiltersOutput()
+  // Don't auto-apply - user needs to click Apply Filters
 }
 
 const clearAllDynamicFilters = () => {
+  // Reset all filter states
   dynamicFilters.value = []
+  appliedFilters.value = []
   userInputValue.value = {}
+  
+  // Reset search query to empty
+  localSearchQuery.value = ''
+  
+  // Clear the search box UI as well
+  if (searchBoxRef.value) {
+    searchBoxRef.value.clearSearch?.()
+  }
+  
+  // Reset local filters to default values
+  localFilters.value = {
+    status: '',
+    priority: '',
+    assignee: '',
+    tags: '',
+    sortBy: 'creation desc'
+  }
+  
+  // Clear localStorage
   localStorage.removeItem(STORAGE_KEYS.DYNAMIC_FILTERS)
   localStorage.removeItem(STORAGE_KEYS.SEARCH_QUERY)
   localStorage.removeItem(STORAGE_KEYS.SHOW_FILTER_PANEL)
+  
+  // Emit changes to parent to reset issue table to default state
+  emit("update:searchQuery", '')
+  emit("update:filters", { ...localFilters.value })
+  
+  // Update the applied filters (which will be empty, showing all issues)
   updateDynamicFiltersOutput()
+  
+  // Close filter panel if open
+  showFilterPanel.value = false
 }
 
 const updateDynamicFilter = (index) => {
@@ -599,10 +663,10 @@ const updateDynamicFilter = (index) => {
 }
 
 const updateDynamicFiltersOutput = () => {
-  // Convert dynamic filters to the format expected by parent component
+  // Convert applied filters (not pending ones) to the format expected by parent component
   const filterObj = {}
   
-  dynamicFilters.value.forEach(filter => {
+  appliedFilters.value.forEach(filter => {
     if (filter.value) {
       const key = filter.field === 'issue_type' ? 'tags' : 
                   filter.field === 'raised_by' ? 'assignee' : filter.field
@@ -613,6 +677,8 @@ const updateDynamicFiltersOutput = () => {
         filterObj[key] = filter.value
       } else if (filter.operator === 'not_equals') {
         filterObj[key] = `!${filter.value}`
+      } else if (filter.operator === 'in') {
+        filterObj[key] = filter.value
       }
       // Add more operator handling as needed
     }
@@ -920,7 +986,7 @@ const addUser = (filter, event) => {
   if (!currentUsers.includes(inputValue)) {
     const newUsers = [...currentUsers, inputValue].join(', ')
     filter.value = newUsers
-    updateDynamicFilter(dynamicFilters.value.indexOf(filter))
+    // Don't auto-apply - user needs to click Apply
   }
   
   userInputValue.value[filter.id] = ''
@@ -930,13 +996,18 @@ const removeUser = (filter, userToRemove) => {
   const currentUsers = getSelectedUsers(filter.value)
   const newUsers = currentUsers.filter(user => user !== userToRemove).join(', ')
   filter.value = newUsers
-  updateDynamicFilter(dynamicFilters.value.indexOf(filter))
+  // Don't auto-apply - user needs to click Apply
 }
 
 // localStorage functions
 const saveFiltersToStorage = () => {
   localStorage.setItem(STORAGE_KEYS.SEARCH_QUERY, localSearchQuery.value)
-  localStorage.setItem(STORAGE_KEYS.DYNAMIC_FILTERS, JSON.stringify(dynamicFilters.value))
+  // Save both pending and applied filters
+  const filterState = {
+    pending: dynamicFilters.value,
+    applied: appliedFilters.value
+  }
+  localStorage.setItem(STORAGE_KEYS.DYNAMIC_FILTERS, JSON.stringify(filterState))
   localStorage.setItem(STORAGE_KEYS.SHOW_FILTER_PANEL, showFilterPanel.value.toString())
 }
 
@@ -952,8 +1023,17 @@ const loadFiltersFromStorage = () => {
   const savedFilters = localStorage.getItem(STORAGE_KEYS.DYNAMIC_FILTERS)
   if (savedFilters) {
     try {
-      const parsedFilters = JSON.parse(savedFilters)
-      dynamicFilters.value = parsedFilters
+      const filterState = JSON.parse(savedFilters)
+      // Handle both old format (array) and new format (object with pending/applied)
+      if (Array.isArray(filterState)) {
+        // Old format - treat as applied filters
+        appliedFilters.value = filterState
+        dynamicFilters.value = [...filterState] // Copy to pending
+      } else {
+        // New format
+        dynamicFilters.value = filterState.pending || []
+        appliedFilters.value = filterState.applied || []
+      }
       updateDynamicFiltersOutput()
     } catch (e) {
       console.warn('Failed to parse saved filters:', e)
@@ -967,17 +1047,50 @@ const loadFiltersFromStorage = () => {
   }
 }
 
-// Apply filters function
-const applyFilters = () => {
+// Function to remove applied filter and immediately apply the change
+const removeAppliedFilter = (index) => {
+  // Get the filter before removing it
+  const removedFilter = appliedFilters.value[index]
+  
+  // Remove from applied filters
+  appliedFilters.value.splice(index, 1)
+  
+  // Also remove from pending filters if it exists there
+  if (removedFilter) {
+    const pendingIndex = dynamicFilters.value.findIndex(f => f.id === removedFilter.id)
+    if (pendingIndex !== -1) {
+      dynamicFilters.value.splice(pendingIndex, 1)
+    }
+  }
+  
+  // Immediately apply the change (update issue table)
   updateDynamicFiltersOutput()
+  
+  // Save to localStorage
   saveFiltersToStorage()
+}
+
+// Apply filters function - this is the only place where filters actually get applied
+const applyFilters = () => {
+  if (!hasPendingChanges.value) return
+  
+  // Copy pending filters to applied filters
+  appliedFilters.value = JSON.parse(JSON.stringify(dynamicFilters.value))
+  
+  // Apply the filters to parent component
+  updateDynamicFiltersOutput()
+  
+  // Save to storage
+  saveFiltersToStorage()
+  
+  // Close panel
   showFilterPanel.value = false
 }
 
-// Watch for changes to save to localStorage
-watch([localSearchQuery, dynamicFilters], () => {
-  saveFiltersToStorage()
-}, { deep: true })
+// Only save search query changes automatically, not filter changes
+watch(localSearchQuery, () => {
+  localStorage.setItem(STORAGE_KEYS.SEARCH_QUERY, localSearchQuery.value)
+})
 
 // Lifecycle hooks for keyboard shortcuts and localStorage
 onMounted(() => {
