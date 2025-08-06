@@ -31,7 +31,7 @@
           </button>
 
           <!-- Active Filters - Inline compact display -->
-          <div v-if="dynamicFilters.length > 0" class="flex items-center space-x-2 flex-1 overflow-x-auto">
+          <div v-if="dynamicFilters.length > 0" class="flex items-center flex-1 overflow-x-auto flex-wrap gap-2">
             <div v-for="(filter, index) in dynamicFilters" :key="filter.id" 
               class="flex items-center space-x-1 bg-gray-100 rounded px-2 py-1 text-sm whitespace-nowrap">
               <span class="text-gray-600 font-medium">{{ getFieldLabel(filter.field) }}</span>
@@ -57,7 +57,8 @@
         <!-- Right side: Clear and Apply buttons -->
         <div v-if="dynamicFilters.length > 0" class="flex items-center space-x-2 ml-4">
           <button @click="clearAllDynamicFilters"
-            class="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
+            class="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+            title="Clear all filters and remove from storage">
             Clear Filters
           </button>
           <button @click="applyFilters"
@@ -132,7 +133,42 @@
                         </span>
                       </div>
                     </div>
-                    <!-- Regular select for other fields -->
+                    <!-- DateTime inputs for date fields -->
+                    <input v-else-if="isDateTimeField(filter.field)"
+                      v-model="filter.value"
+                      @input="updateDynamicFilter(index)"
+                      type="datetime-local"
+                      :placeholder="getFieldPlaceholder(filter.field)"
+                      class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+                    <!-- Date inputs for date fields -->
+                    <input v-else-if="isDateField(filter.field)"
+                      v-model="filter.value"
+                      @input="updateDynamicFilter(index)"
+                      type="date"
+                      :placeholder="getFieldPlaceholder(filter.field)"
+                      class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500" />
+                    <!-- Multi-select for Users Assigned field -->
+                    <div v-else-if="filter.field === 'custom_users_assigned'" class="relative">
+                      <div class="flex flex-wrap gap-1 p-2 border border-gray-300 rounded min-h-[32px] focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
+                        <span v-for="user in getSelectedUsers(filter.value)" :key="user" 
+                          class="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full border border-blue-200">
+                          {{ user }}
+                          <button @click="removeUser(filter, user)" class="ml-1 text-blue-600 hover:text-blue-800">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                          </button>
+                        </span>
+                        <input 
+                          v-model="userInputValue[filter.id]" 
+                          @keydown.enter="addUser(filter, $event)"
+                          @keydown.comma="addUser(filter, $event)"
+                          type="text"
+                          placeholder="Type user name and press Enter or comma"
+                          class="flex-1 min-w-[120px] border-none outline-none bg-transparent text-sm" />
+                      </div>
+                    </div>
+                    <!-- Regular select for dropdown fields -->
                     <select v-else-if="isSelectField(filter.field)" 
                       v-model="filter.value" 
                       @change="updateDynamicFilter(index)"
@@ -244,6 +280,16 @@ const showFilterPanel = ref(false)
 const dynamicFilters = ref([])
 let filterIdCounter = 0
 
+// Multi-select state for users
+const userInputValue = ref({})
+
+// localStorage keys
+const STORAGE_KEYS = {
+  SEARCH_QUERY: 'issue_filters_search_query',
+  DYNAMIC_FILTERS: 'issue_filters_dynamic_filters',
+  SHOW_FILTER_PANEL: 'issue_filters_show_panel'
+}
+
 // Get available tags from issues
 const availableTags = computed(() => {
   const tagSet = new Set()
@@ -282,20 +328,6 @@ const availableFields = computed(() => [
     type: 'select'
   },
   {
-    value: 'priority',
-    label: 'Priority',
-    description: 'Filter by priority level',
-    icon: 'flag',
-    type: 'select'
-  },
-  {
-    value: 'issue_type',
-    label: 'Issue Type',
-    description: 'Filter by issue category',
-    icon: 'tag',
-    type: 'select'
-  },
-  {
     value: 'raised_by',
     label: 'Raised By (Email)',
     description: 'Filter by who raised the issue',
@@ -319,13 +351,6 @@ const availableFields = computed(() => [
     type: 'link'
   },
   {
-    value: 'customer_name',
-    label: 'Customer Name',
-    description: 'Filter by customer name',
-    icon: 'building',
-    type: 'text'
-  },
-  {
     value: 'contact',
     label: 'Contact',
     description: 'Filter by contact person',
@@ -339,52 +364,7 @@ const availableFields = computed(() => [
     icon: 'user-plus',
     type: 'link'
   },
-  
-  // Project & Company
-  {
-    value: 'project',
-    label: 'Project',
-    description: 'Filter by project',
-    icon: 'folder',
-    type: 'link'
-  },
-  {
-    value: 'company',
-    label: 'Company',
-    description: 'Filter by company',
-    icon: 'building',
-    type: 'link'
-  },
-  
-  // Service Level Agreement Fields
-  {
-    value: 'service_level_agreement',
-    label: 'Service Level Agreement',
-    description: 'Filter by SLA',
-    icon: 'clock',
-    type: 'link'
-  },
-  {
-    value: 'agreement_status',
-    label: 'SLA Status',
-    description: 'Filter by SLA status',
-    icon: 'check-circle',
-    type: 'select'
-  },
-  {
-    value: 'response_by',
-    label: 'Response By',
-    description: 'Filter by response deadline',
-    icon: 'clock',
-    type: 'datetime'
-  },
-  {
-    value: 'sla_resolution_by',
-    label: 'Resolution By',
-    description: 'Filter by resolution deadline',
-    icon: 'clock',
-    type: 'datetime'
-  },
+
   
   // Custom Fields
   {
@@ -392,7 +372,7 @@ const availableFields = computed(() => [
     label: 'Assigned CSM Team',
     description: 'Filter by assigned CSM team',
     icon: 'users',
-    type: 'link'
+    type: 'select'
   },
   {
     value: 'custom_users_assigned',
@@ -401,127 +381,22 @@ const availableFields = computed(() => [
     icon: 'user-check',
     type: 'multiselect'
   },
-  {
-    value: 'custom_labels',
-    label: 'Labels',
-    description: 'Filter by issue labels',
-    icon: 'tag',
-    type: 'multiselect'
-  },
   
   // Date Fields
   {
     value: 'creation',
     label: 'Created Date',
-    description: 'Filter by creation date',
+    description: 'Filter by creation date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)',
     icon: 'calendar',
-    type: 'date'
+    type: 'datetime'
   },
   {
     value: 'modified',
-    label: 'Modified Date',
-    description: 'Filter by last modified date',
-    icon: 'clock',
-    type: 'date'
-  },
-  {
-    value: 'opening_date',
-    label: 'Opening Date',
-    description: 'Filter by opening date',
-    icon: 'calendar',
-    type: 'date'
-  },
-  {
-    value: 'opening_time',
-    label: 'Opening Time',
-    description: 'Filter by opening time',
-    icon: 'clock',
-    type: 'time'
-  },
-  {
-    value: 'sla_resolution_date',
-    label: 'Resolution Date',
-    description: 'Filter by resolution date',
-    icon: 'calendar',
-    type: 'datetime'
-  },
-  {
-    value: 'first_responded_on',
-    label: 'First Responded On',
-    description: 'Filter by first response date',
+    label: 'Modified Date', 
+    description: 'Filter by last modified date (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS)',
     icon: 'clock',
     type: 'datetime'
   },
-  
-  // Duration Fields
-  {
-    value: 'first_response_time',
-    label: 'First Response Time',
-    description: 'Filter by first response time',
-    icon: 'clock',
-    type: 'duration'
-  },
-  {
-    value: 'avg_response_time',
-    label: 'Average Response Time',
-    description: 'Filter by average response time',
-    icon: 'clock',
-    type: 'duration'
-  },
-  {
-    value: 'resolution_time',
-    label: 'Resolution Time',
-    description: 'Filter by resolution time',
-    icon: 'clock',
-    type: 'duration'
-  },
-  {
-    value: 'user_resolution_time',
-    label: 'User Resolution Time',
-    description: 'Filter by user resolution time',
-    icon: 'clock',
-    type: 'duration'
-  },
-  {
-    value: 'total_hold_time',
-    label: 'Total Hold Time',
-    description: 'Filter by total hold time',
-    icon: 'pause',
-    type: 'duration'
-  },
-  
-  // Boolean Fields
-  {
-    value: 'via_customer_portal',
-    label: 'Via Customer Portal',
-    description: 'Filter by customer portal origin',
-    icon: 'globe',
-    type: 'boolean'
-  },
-  
-  // System Fields
-  {
-    value: 'naming_series',
-    label: 'Series',
-    description: 'Filter by naming series',
-    icon: 'hash',
-    type: 'text'
-  },
-  {
-    value: 'email_account',
-    label: 'Email Account',
-    description: 'Filter by email account',
-    icon: 'mail',
-    type: 'link'
-  },
-  {
-    value: 'issue_split_from',
-    label: 'Issue Split From',
-    description: 'Filter by parent issue',
-    icon: 'git-branch',
-    type: 'link'
-  },
-  
   // Tags (User Tags)
   {
     value: '_user_tags',
@@ -580,6 +455,7 @@ const focusSearch = () => {
 const handleSearchChange = (value) => {
   localSearchQuery.value = value
   emit("update:searchQuery", value)
+  saveFiltersToStorage()
 }
 
 const handleSuggestionSelected = (suggestion) => {
@@ -691,8 +567,15 @@ const addNewFilter = (fieldValue) => {
   }
 
   dynamicFilters.value.push(newFilter)
+  
+  // Initialize user input value for multiselect fields
+  if (fieldValue === 'custom_users_assigned') {
+    userInputValue.value[newFilter.id] = ''
+  }
+  
   showFilterPanel.value = false
   updateDynamicFiltersOutput()
+  saveFiltersToStorage()
 }
 
 const removeDynamicFilter = (index) => {
@@ -702,12 +585,17 @@ const removeDynamicFilter = (index) => {
 
 const clearAllDynamicFilters = () => {
   dynamicFilters.value = []
+  userInputValue.value = {}
+  localStorage.removeItem(STORAGE_KEYS.DYNAMIC_FILTERS)
+  localStorage.removeItem(STORAGE_KEYS.SEARCH_QUERY)
+  localStorage.removeItem(STORAGE_KEYS.SHOW_FILTER_PANEL)
   updateDynamicFiltersOutput()
 }
 
 const updateDynamicFilter = (index) => {
   // Trigger reactivity and update parent
   updateDynamicFiltersOutput()
+  saveFiltersToStorage()
 }
 
 const updateDynamicFiltersOutput = () => {
@@ -850,6 +738,16 @@ const isSelectField = (fieldValue) => {
   return field?.type === 'select' || field?.type === 'tags'
 }
 
+const isDateField = (fieldValue) => {
+  const field = availableFields.value.find(f => f.value === fieldValue)
+  return field?.type === 'date'
+}
+
+const isDateTimeField = (fieldValue) => {
+  const field = availableFields.value.find(f => f.value === fieldValue)
+  return field?.type === 'datetime'
+}
+
 const getFieldOptions = (fieldValue) => {
   switch (fieldValue) {
     case 'status':
@@ -862,6 +760,22 @@ const getFieldOptions = (fieldValue) => {
       return props.tagsOptions
     case '_user_tags':
       return availableTags.value
+    case 'custom_assigned_csm_team':
+      // Mock CSM teams - in real implementation, this should come from props or API
+      return [
+        { label: 'Team Alpha', value: 'team-alpha' },
+        { label: 'Team Beta', value: 'team-beta' },
+        { label: 'Team Gamma', value: 'team-gamma' },
+        { label: 'Team Delta', value: 'team-delta' }
+      ]
+    case 'custom_users_assigned':
+      // Mock users - in real implementation, this should come from props or API
+      return [
+        { label: 'John Doe', value: 'john.doe' },
+        { label: 'Jane Smith', value: 'jane.smith' },
+        { label: 'Bob Wilson', value: 'bob.wilson' },
+        { label: 'Alice Johnson', value: 'alice.johnson' }
+      ]
     default:
       return []
   }
@@ -991,19 +905,89 @@ const getTagStyle = (tag) => {
   }
 }
 
+// Multi-select user functions
+const getSelectedUsers = (value) => {
+  if (!value) return []
+  return value.split(',').map(user => user.trim()).filter(user => user)
+}
+
+const addUser = (filter, event) => {
+  event.preventDefault()
+  const inputValue = userInputValue.value[filter.id]?.trim()
+  if (!inputValue) return
+  
+  const currentUsers = getSelectedUsers(filter.value)
+  if (!currentUsers.includes(inputValue)) {
+    const newUsers = [...currentUsers, inputValue].join(', ')
+    filter.value = newUsers
+    updateDynamicFilter(dynamicFilters.value.indexOf(filter))
+  }
+  
+  userInputValue.value[filter.id] = ''
+}
+
+const removeUser = (filter, userToRemove) => {
+  const currentUsers = getSelectedUsers(filter.value)
+  const newUsers = currentUsers.filter(user => user !== userToRemove).join(', ')
+  filter.value = newUsers
+  updateDynamicFilter(dynamicFilters.value.indexOf(filter))
+}
+
+// localStorage functions
+const saveFiltersToStorage = () => {
+  localStorage.setItem(STORAGE_KEYS.SEARCH_QUERY, localSearchQuery.value)
+  localStorage.setItem(STORAGE_KEYS.DYNAMIC_FILTERS, JSON.stringify(dynamicFilters.value))
+  localStorage.setItem(STORAGE_KEYS.SHOW_FILTER_PANEL, showFilterPanel.value.toString())
+}
+
+const loadFiltersFromStorage = () => {
+  // Load search query
+  const savedSearchQuery = localStorage.getItem(STORAGE_KEYS.SEARCH_QUERY)
+  if (savedSearchQuery) {
+    localSearchQuery.value = savedSearchQuery
+    emit("update:searchQuery", savedSearchQuery)
+  }
+  
+  // Load dynamic filters
+  const savedFilters = localStorage.getItem(STORAGE_KEYS.DYNAMIC_FILTERS)
+  if (savedFilters) {
+    try {
+      const parsedFilters = JSON.parse(savedFilters)
+      dynamicFilters.value = parsedFilters
+      updateDynamicFiltersOutput()
+    } catch (e) {
+      console.warn('Failed to parse saved filters:', e)
+    }
+  }
+  
+  // Load panel state
+  const savedPanelState = localStorage.getItem(STORAGE_KEYS.SHOW_FILTER_PANEL)
+  if (savedPanelState !== null) {
+    showFilterPanel.value = savedPanelState === 'true'
+  }
+}
+
 // Apply filters function
 const applyFilters = () => {
   updateDynamicFiltersOutput()
+  saveFiltersToStorage()
   showFilterPanel.value = false
 }
 
-// Lifecycle hooks for keyboard shortcuts
+// Watch for changes to save to localStorage
+watch([localSearchQuery, dynamicFilters], () => {
+  saveFiltersToStorage()
+}, { deep: true })
+
+// Lifecycle hooks for keyboard shortcuts and localStorage
 onMounted(() => {
   document.addEventListener('keydown', handleKeyboardShortcut)
+  loadFiltersFromStorage()
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyboardShortcut)
+  saveFiltersToStorage()
 })
 </script>
 
