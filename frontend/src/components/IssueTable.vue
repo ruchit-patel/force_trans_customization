@@ -14,7 +14,7 @@
 
 		<!-- ListView -->
 		<ListView v-else :columns="columns" :rows="transformedIssues" row-key="name" :options="listOptions"
-			@update:selections="handleSelections">
+			@update:selections="handleSelections" class="p-4">
 
 			<ListHeader>
 				<ListHeaderItem v-for="column in columns" :key="column.key" :item="column">
@@ -48,7 +48,7 @@
 							<template #default>
 								<!-- Issue ID with link -->
 								<a v-if="column.key === 'name'" href="#"
-									class="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+									class="text-blue-600 hover:text-blue-800 hover:underline font-medium text-sm"
 									@click.prevent="handleIssueClick(issue)">
 									{{ formatIssueId(item) }}
 								</a>
@@ -56,7 +56,7 @@
 								<!-- Title with description -->
 								<div v-else-if="column.key === 'subject'" class="max-w-xs">
 									<div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}</div>
-									<div v-if="issue.description" class="text-gray-500 text-xs mt-1 truncate"
+									<div v-if="issue.description" class="text-gray-500 text-sm mt-1 truncate"
 										:title="issue.description">
 										{{ stripHtml(issue.description) }}
 									</div>
@@ -107,7 +107,7 @@
 
 								<!-- Created At with date and time -->
 								<div v-else-if="column.key === 'creation'" class="flex flex-col">
-									<span>{{ formatDate(item) }}</span>
+									<span class="text-sm">{{ formatDate(item) }}</span>
 									<span class="text-xs text-gray-400">{{ formatTime(item) }}</span>
 								</div>
 
