@@ -8,8 +8,16 @@ export const issuesResource = createResource({
 		const safeParams = params || {}
 		const limit_page_length = safeParams.limit_page_length || 10
 		const limit_start = safeParams.limit_start || 0
+		// Handle both old and new filter formats
 		const filters = safeParams.filters || {}
 		const order_by = safeParams.order_by || "creation desc"
+
+		console.log('issuesResource params:', {
+			limit_page_length,
+			limit_start,
+			filters,
+			order_by
+		})
 
 		return {
 			limit_page_length,
@@ -39,7 +47,11 @@ export const issuesCountResource = createResource({
 	makeParams(params) {
 		// Handle null/undefined params explicitly
 		const safeParams = params || {}
-		const filters = safeParams.filters || {}
+		// Support both old object format and new array format
+		const filters = safeParams.filters || safeParams || {}
+		
+		console.log('issuesCountResource filters:', filters)
+		
 		return {
 			filters,
 		}
@@ -57,12 +69,15 @@ export function reloadIssues(params = {}) {
 		filters: params.filters || {},
 		order_by: params.order_by || "creation desc",
 	}
+	
+	console.log('reloadIssues with params:', reloadParams)
 	return issuesResource.reload(reloadParams)
 }
 
 // Helper function to get issues count with filters
 export function getIssuesCount(filters = {}) {
-	return issuesCountResource.reload({ filters })
+	console.log('getIssuesCount with filters:', filters)
+	return issuesCountResource.reload(filters)
 }
 
 // Resource for fetching a single issue with assignments
@@ -305,12 +320,19 @@ export const statFilterResource = createResource({
 	url: "force_trans_customization.api.issues.get_issues_by_stat_filter",
 	makeParams(params) {
 		const safeParams = params || {}
-		return {
+		const result = {
 			stat_type: safeParams.stat_type || "team_tickets",
 			limit_page_length: safeParams.limit_page_length || 10,
 			limit_start: safeParams.limit_start || 0,
 			order_by: safeParams.order_by || "creation desc",
 		}
+		
+		// Add filters if provided
+		if (safeParams.filters) {
+			result.filters = safeParams.filters
+		}
+		
+		return result
 	},
 	onError(error) {
 		console.error("Failed to filter issues by stat:", error)
@@ -331,9 +353,16 @@ export const statFilterCountResource = createResource({
 	url: "force_trans_customization.api.issues.get_stat_filter_count",
 	makeParams(params) {
 		const safeParams = params || {}
-		return {
+		const result = {
 			stat_type: safeParams.stat_type || "team_tickets",
 		}
+		
+		// Add filters if provided
+		if (safeParams.filters) {
+			result.filters = safeParams.filters
+		}
+		
+		return result
 	},
 	onError(error) {
 		console.error("Failed to get stat filter count:", error)
@@ -349,14 +378,28 @@ export function filterIssuesByStat(statType, params = {}) {
 		limit_start: params.limit_start || 0,
 		order_by: params.order_by || "creation desc",
 	}
+	
+	// Add filters if provided
+	if (params.filters) {
+		filterParams.filters = params.filters
+	}
+	
+	console.log('filterIssuesByStat params:', filterParams)
 	return statFilterResource.reload(filterParams)
 }
 
 // Helper function to get count of issues by stat filter
-export function getStatFilterCount(statType) {
-	return statFilterCountResource.reload({
+export function getStatFilterCount(statType, filters = null) {
+	const params = {
 		stat_type: statType,
-	})
+	}
+	
+	// Add filters if provided
+	if (filters) {
+		params.filters = filters
+	}
+	
+	return statFilterCountResource.reload(params)
 }
 
 // Helper function to refresh all filter options and clear caches

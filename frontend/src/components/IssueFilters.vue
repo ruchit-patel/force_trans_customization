@@ -48,17 +48,27 @@
         <div class="flex items-center space-x-2 ml-4">
           <button v-if="appliedFilters.length > 0 || searchQuery" 
             @click="clearAllFilters"
-            class="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
+            class="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
             Clear All
           </button>
           <button v-if="pendingFilters.length > 0"
             @click="applyFilters"
             :class="[
-              'px-4 py-2 text-sm font-medium rounded-md transition-colors',
+              'px-4 py-2 text-sm font-medium rounded-md transition-all duration-200',
+              isApplyingFilters ? 'bg-blue-500 text-white cursor-wait' :
               hasPendingChanges ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-300 text-gray-600 cursor-not-allowed'
             ]"
-            :disabled="!hasPendingChanges">
-            {{ hasPendingChanges ? 'Apply Filters' : 'Filters Applied' }}
+            :disabled="!hasPendingChanges || isApplyingFilters">
+            <span v-if="isApplyingFilters" class="flex items-center">
+              <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Applying...
+            </span>
+            <span v-else>
+              {{ hasPendingChanges ? 'Apply Filters' : 'Filters Applied' }}
+            </span>
           </button>
         </div>
       </div>
@@ -92,120 +102,174 @@
               
               <div v-else class="space-y-4">
                 <div v-for="(filter, index) in pendingFilters" :key="filter.id" 
-                  class="flex items-start space-x-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  class="grid grid-cols-12 gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                   
                   <!-- Field Name -->
-                  <div class="w-24 text-sm font-medium text-gray-700 pt-2">
-                    {{ getFieldLabel(filter.field) }}
+                  <div class="col-span-2 flex items-center">
+                    <span class="text-sm font-semibold text-gray-800 bg-white px-2 py-1 rounded-md border border-gray-200">
+                      {{ getFieldLabel(filter.field) }}
+                    </span>
                   </div>
 
                   <!-- Operator -->
-                  <div class="w-28">
-                    <select v-model="filter.operator" 
-                      class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                      <option v-for="op in getOperatorsForField(filter.field)" :key="op.value" :value="op.value">
-                        {{ op.label }}
-                      </option>
-                    </select>
-
-                    
+                  <div class="col-span-2">
+                    <Dropdown 
+                      :options="getOperatorDropdownOptions(filter.field, filter)"
+                      :placement="'left'"
+                    >
+                      <template #default="{ open }">
+                        <button 
+                          :class="[
+                            'w-full px-3 py-2 text-sm border rounded-md transition-all duration-200 flex items-center justify-between bg-white hover:bg-gray-50',
+                            open ? 'border-blue-500 ring-2 ring-blue-200 shadow-md' : 'border-gray-300 hover:border-gray-400 shadow-sm'
+                          ]"
+                        >
+                          <span class="text-gray-700 font-medium truncate">{{ getOperatorLabel(filter.operator, filter.field) }}</span>
+                          <svg class="w-4 h-4 text-gray-400 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                          </svg>
+                        </button>
+                      </template>
+                    </Dropdown>
                   </div>
 
                   <!-- Dynamic Value Input -->
-                  <div class="flex-1">
+                  <div class="col-span-7">
                     <!-- Text Input -->
                     <input v-if="getFieldType(filter.field) === 'text'" 
                       v-model="filter.value" 
                       type="text" 
                       :placeholder="getFieldPlaceholder(filter.field)"
-                      class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                      class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
                     
                     <!-- Email Input -->
                     <input v-else-if="getFieldType(filter.field) === 'email'" 
                       v-model="filter.value" 
                       type="email" 
                       :placeholder="getFieldPlaceholder(filter.field)"
-                      class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                      class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
                     
                     <!-- DateTime Input -->
                     <div v-else-if="getFieldType(filter.field) === 'datetime'" class="space-y-2">
-                      <input v-model="filter.value" 
-                        type="datetime-local" 
-                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                      <p class="text-xs text-gray-500">Select date and time</p>
+                      <div v-if="filter.operator === 'between'" class="grid grid-cols-2 gap-2">
+                        <div>
+                          <input v-model="filter.startValue" 
+                            type="datetime-local" 
+                            placeholder="Start date and time"
+                            @input="updateDateRange(filter)"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                          <p class="text-xs text-gray-500 mt-1">From</p>
+                        </div>
+                        <div>
+                          <input v-model="filter.endValue" 
+                            type="datetime-local" 
+                            placeholder="End date and time"
+                            @input="updateDateRange(filter)"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                          <p class="text-xs text-gray-500 mt-1">To</p>
+                        </div>
+                      </div>
+                      <div v-else>
+                        <input v-model="filter.value" 
+                          type="datetime-local" 
+                          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                        <p class="text-xs text-gray-500 italic mt-1">Select date and time</p>
+                      </div>
                     </div>
 
                     <!-- Date Input -->
-                    <input v-else-if="getFieldType(filter.field) === 'date'" 
-                      v-model="filter.value" 
-                      type="date" 
-                      class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                    <div v-else-if="getFieldType(filter.field) === 'date'" class="space-y-2">
+                      <div v-if="filter.operator === 'between'" class="grid grid-cols-2 gap-2">
+                        <div>
+                          <input v-model="filter.startValue" 
+                            type="date" 
+                            @input="updateDateRange(filter)"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                          <p class="text-xs text-gray-500 mt-1">From</p>
+                        </div>
+                        <div>
+                          <input v-model="filter.endValue" 
+                            type="date" 
+                            @input="updateDateRange(filter)"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                          <p class="text-xs text-gray-500 mt-1">To</p>
+                        </div>
+                      </div>
+                      <div v-else>
+                        <input v-model="filter.value" 
+                          type="date" 
+                          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                      </div>
+                    </div>
                     
                     <!-- Select/ComboBox for Options -->
                     <div v-else-if="getFieldType(filter.field) === 'select'" class="relative">
-                      <select v-if="!filter.isMultiSelect" 
-                        v-model="filter.value" 
-                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Select {{ getFieldLabel(filter.field) }}...</option>
-                        <option v-for="option in getFieldOptions(filter.field)" :key="option.value" :value="option.value">
-                          {{ option.label }}
-                        </option>
-                      </select>
+                      <div v-if="!filter.isMultiSelect">
+                        <!-- Simple select for priority field -->
+                        <select v-if="filter.field === 'priority' || filter.field === 'status' || filter.field === 'issue_type'"
+                          v-model="filter.value"
+                          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400"
+                        >
+                          <option value="">Select {{ getFieldLabel(filter.field) }}...</option>
+                          <option v-for="option in getFieldOptions(filter.field)" :key="option.value" :value="option.value">
+                            {{ option.label }}
+                          </option>
+                        </select>
+                        
+                        <!-- Combobox for other select fields -->
+                        <div v-else class="filter-combobox">
+                          <Combobox
+                            v-model="filter.value" 
+                            :options="getComboboxOptions(filter.field)"
+                            :placeholder="`Select ${getFieldLabel(filter.field)}...`"
+                          />
+                        </div>
+                      </div>
                       
                       <!-- Multi-select for tags, users, etc -->
                       <div v-else class="space-y-2">
-                        <div class="flex flex-wrap gap-1 mb-2">
+                        <div v-if="getSelectedValues(filter.value).length > 0" class="flex flex-wrap gap-1 mb-2 p-2 bg-white rounded-md border border-gray-200">
                           <span v-for="(selectedValue, idx) in getSelectedValues(filter.value)" :key="idx"
-                            class="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
-                            {{ selectedValue }}
-                            <button @click="removeSelectedValue(filter, idx)" class="ml-1 text-blue-600 hover:text-red-600">
+                            class="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full border border-blue-200 hover:bg-blue-200 transition-colors">
+                            {{ getDisplayValueForOption(selectedValue, filter.field) }}
+                            <button @click="removeSelectedValue(filter, idx)" class="ml-1 text-blue-600 hover:text-red-600 transition-colors">
                               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                               </svg>
                             </button>
                           </span>
                         </div>
-                        <select @change="addSelectedValue(filter, $event.target.value); $event.target.value = ''" 
-                          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                          <option value="">Add {{ getFieldLabel(filter.field) }}...</option>
-                          <option v-for="option in getAvailableOptions(filter)" :key="option.value" :value="option.value">
-                            {{ option.label }}
-                          </option>
-                        </select>
+                        <div class="filter-combobox">
+                          <Combobox
+                            v-model="filter.multiSelectValue"
+                            :options="getAvailableComboboxOptions(filter)"
+                            :placeholder="`Add ${getFieldLabel(filter.field)}...`"
+                            @update:model-value="handleMultiSelectChange(filter, $event)"
+                          />
+                        </div>
                       </div>
                     </div>
 
                     <!-- Link/Reference Input with ComboBox -->
-                    <div v-else-if="getFieldType(filter.field) === 'link'" class="relative">
-                      <div class="relative">
-                        <input v-model="filter.searchValue" 
-                          @input="handleLinkSearch(filter, $event.target.value)"
-                          @focus="filter.showSuggestions = true"
-                          type="text" 
+                    <div v-else-if="getFieldType(filter.field) === 'link'" class="space-y-2">
+                      <div class="filter-combobox">
+                        <Combobox
+                          v-model="filter.value"
+                          :options="getLinkComboboxOptions(filter)"
                           :placeholder="`Search and select ${getFieldLabel(filter.field)}...`"
-                          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                        
-                        <!-- Selected Value Display -->
-                        <div v-if="filter.value && filter.displayValue" 
-                          class="mt-2 p-2 bg-green-50 border border-green-200 rounded text-sm">
-                          <div class="flex items-center justify-between">
-                            <span class="text-green-800">Selected: {{ filter.displayValue }}</span>
-                            <button @click="clearLinkValue(filter)" class="text-green-600 hover:text-red-600">
-                              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-
-                        <!-- Suggestions Dropdown -->
-                        <div v-if="filter.showSuggestions && filter.suggestions && filter.suggestions.length > 0" 
-                          class="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
-                          <button v-for="suggestion in filter.suggestions" :key="suggestion.value"
-                            @click="selectLinkValue(filter, suggestion)"
-                            class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0">
-                            <div class="font-medium">{{ suggestion.label }}</div>
-                            <div v-if="suggestion.subtitle" class="text-xs text-gray-500">{{ suggestion.subtitle }}</div>
+                          @update:model-value="handleLinkSelection(filter, $event)"
+                        />
+                      </div>
+                      
+                      <!-- Selected Value Display -->
+                      <div v-if="filter.value && filter.displayValue" 
+                        class="p-2 bg-green-50 border border-green-200 rounded-md text-sm">
+                        <div class="flex items-center justify-between">
+                          <span class="text-green-800 font-medium">Selected: {{ filter.displayValue }}</span>
+                          <button @click="clearLinkValue(filter)" class="text-green-600 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
                           </button>
                         </div>
                       </div>
@@ -213,11 +277,11 @@
 
                     <!-- Tags/Multi-value Input -->
                     <div v-else-if="getFieldType(filter.field) === 'tags'" class="space-y-2">
-                      <div class="flex flex-wrap gap-1 mb-2">
+                      <div v-if="getTags(filter.value).length > 0" class="flex flex-wrap gap-1 mb-2 p-2 bg-white rounded-md border border-gray-200">
                         <span v-for="(tag, idx) in getTags(filter.value)" :key="idx"
-                          class="inline-flex items-center px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">
+                          class="inline-flex items-center px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full border border-purple-200 hover:bg-purple-200 transition-colors">
                           {{ tag }}
-                          <button @click="removeTag(filter, idx)" class="ml-1 text-purple-600 hover:text-red-600">
+                          <button @click="removeTag(filter, idx)" class="ml-1 text-purple-600 hover:text-red-600 transition-colors">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
@@ -229,17 +293,20 @@
                         @keyup.comma="addTag(filter)"
                         type="text" 
                         placeholder="Type tags and press Enter (comma separated)"
-                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                      <p class="text-xs text-gray-500">Press Enter or comma to add tags</p>
+                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                      <p class="text-xs text-gray-500 italic">Press Enter or comma to add tags</p>
                     </div>
                   </div>
 
                   <!-- Remove Button -->
-                  <button @click="removeFilter(index)" class="p-1 text-gray-400 hover:text-red-600 mt-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                  </button>
+                  <div class="col-span-1 flex items-start justify-center pt-1">
+                    <button @click="removeFilter(index)" 
+                      class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all duration-200 group">
+                      <svg class="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -248,12 +315,22 @@
                 <button @click="clearAllFilters" class="text-sm text-gray-600 hover:text-gray-900">
                   Clear All
                 </button>
-                <button @click="applyFilters" :disabled="!hasPendingChanges"
+                <button @click="applyFilters" :disabled="!hasPendingChanges || isApplyingFilters"
                   :class="[
-                    'px-4 py-2 text-sm font-medium rounded',
+                    'px-4 py-2 text-sm font-medium rounded transition-all duration-200',
+                    isApplyingFilters ? 'bg-gray-700 text-white cursor-wait' :
                     hasPendingChanges ? 'bg-gray-900 text-white hover:bg-gray-800' : 'bg-gray-300 text-gray-600 cursor-not-allowed'
                   ]">
-                  {{ hasPendingChanges ? 'Apply Filters' : 'Filters Applied' }}
+                  <span v-if="isApplyingFilters" class="flex items-center">
+                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Applying...
+                  </span>
+                  <span v-else>
+                    {{ hasPendingChanges ? 'Apply Filters' : 'Filters Applied' }}
+                  </span>
                 </button>
               </div>
             </div>
@@ -268,7 +345,7 @@
 </template>
 
 <script setup>
-import { Select } from "frappe-ui"
+import { Dropdown, Combobox } from "frappe-ui"
 import { computed, ref, watch, onMounted, onUnmounted } from "vue"
 import CustomSearchBox from "./CustomSearchBox.vue"
 
@@ -281,7 +358,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(["update:searchQuery", "update:filters", "suggestion-selected"])
+const emit = defineEmits(["update:searchQuery", "update:filters", "suggestion-selected", "filters-applied"])
 
 // State
 const searchQuery = ref(props.searchQuery)
@@ -289,6 +366,9 @@ const showFilterPanel = ref(false)
 const pendingFilters = ref([])
 const appliedFilters = ref([])
 let filterIdCounter = 0
+
+// Loading state for better UX
+const isApplyingFilters = ref(false)
 
 // Enhanced Field Configuration with Types
 const availableFields = [
@@ -488,30 +568,61 @@ const addTag = (filter) => {
 const handleLinkSearch = (filter, searchValue) => {
   filter.searchValue = searchValue
   
-  // Mock search suggestions - replace with actual API call
-  if (searchValue.length > 1) {
-    // Simulate different data based on field type
+  // Populate default suggestions when field is created or search is empty
+  if (!searchValue || searchValue.length === 0) {
+    // Provide default suggestions for each field type
     if (filter.field === 'customer') {
       filter.suggestions = [
         { value: 'cust_123', label: 'Acme Corporation', subtitle: 'Enterprise Customer' },
         { value: 'cust_456', label: 'Tech Solutions Inc', subtitle: 'SMB Customer' },
         { value: 'cust_789', label: 'Global Industries', subtitle: 'Enterprise Customer' }
-      ].filter(item => item.label.toLowerCase().includes(searchValue.toLowerCase()))
+      ]
     } else if (filter.field === 'project') {
       filter.suggestions = [
         { value: 'proj_123', label: 'Website Redesign', subtitle: 'Active Project' },
         { value: 'proj_456', label: 'Mobile App', subtitle: 'In Progress' },
         { value: 'proj_789', label: 'API Integration', subtitle: 'Planning' }
-      ].filter(item => item.label.toLowerCase().includes(searchValue.toLowerCase()))
+      ]
     } else if (filter.field === 'owner') {
       filter.suggestions = [
         { value: 'user_123', label: 'John Doe', subtitle: 'john.doe@company.com' },
         { value: 'user_456', label: 'Jane Smith', subtitle: 'jane.smith@company.com' },
         { value: 'user_789', label: 'Bob Wilson', subtitle: 'bob.wilson@company.com' }
-      ].filter(item => item.label.toLowerCase().includes(searchValue.toLowerCase()))
+      ]
     }
-  } else {
-    filter.suggestions = []
+  } else if (searchValue.length > 0) {
+    // Filter suggestions based on search value
+    if (filter.field === 'customer') {
+      const allSuggestions = [
+        { value: 'cust_123', label: 'Acme Corporation', subtitle: 'Enterprise Customer' },
+        { value: 'cust_456', label: 'Tech Solutions Inc', subtitle: 'SMB Customer' },
+        { value: 'cust_789', label: 'Global Industries', subtitle: 'Enterprise Customer' }
+      ]
+      filter.suggestions = allSuggestions.filter(item => 
+        item.label.toLowerCase().includes(searchValue.toLowerCase()) ||
+        item.subtitle.toLowerCase().includes(searchValue.toLowerCase())
+      )
+    } else if (filter.field === 'project') {
+      const allSuggestions = [
+        { value: 'proj_123', label: 'Website Redesign', subtitle: 'Active Project' },
+        { value: 'proj_456', label: 'Mobile App', subtitle: 'In Progress' },
+        { value: 'proj_789', label: 'API Integration', subtitle: 'Planning' }
+      ]
+      filter.suggestions = allSuggestions.filter(item => 
+        item.label.toLowerCase().includes(searchValue.toLowerCase()) ||
+        item.subtitle.toLowerCase().includes(searchValue.toLowerCase())
+      )
+    } else if (filter.field === 'owner') {
+      const allSuggestions = [
+        { value: 'user_123', label: 'John Doe', subtitle: 'john.doe@company.com' },
+        { value: 'user_456', label: 'Jane Smith', subtitle: 'jane.smith@company.com' },
+        { value: 'user_789', label: 'Bob Wilson', subtitle: 'bob.wilson@company.com' }
+      ]
+      filter.suggestions = allSuggestions.filter(item => 
+        item.label.toLowerCase().includes(searchValue.toLowerCase()) ||
+        item.subtitle.toLowerCase().includes(searchValue.toLowerCase())
+      )
+    }
   }
 }
 
@@ -530,6 +641,113 @@ const clearLinkValue = (filter) => {
   filter.suggestions = []
 }
 
+// Frappe UI Helper Functions
+const getOperatorDropdownOptions = (fieldValue, filter) => {
+  const operators = getOperatorsForField(fieldValue)
+  return operators.map(op => ({
+    label: op.label,
+    onClick: () => {
+      // Clear existing values when changing operator
+      if (filter.operator !== op.value) {
+        filter.value = ''
+        filter.startValue = ''
+        filter.endValue = ''
+        filter.multiSelectValue = null
+        filter.searchValue = ''
+        filter.displayValue = ''
+        filter.tagInput = ''
+      }
+      filter.operator = op.value
+    }
+  }))
+}
+
+const getOperatorLabel = (operatorValue, fieldValue) => {
+  const operators = getOperatorsForField(fieldValue)
+  return operators.find(op => op.value === operatorValue)?.label || operatorValue
+}
+
+const getComboboxOptions = (fieldValue) => {
+  const options = getFieldOptions(fieldValue)
+  if (!options || options.length === 0) {
+    return []
+  }
+  return options.map(option => {
+    if (typeof option === 'string') {
+      return {
+        label: option,
+        value: option
+      }
+    }
+    return {
+      label: option.label || option.value,
+      value: option.value || option.label
+    }
+  })
+}
+
+const getDisplayValueForOption = (value, fieldValue) => {
+  const options = getFieldOptions(fieldValue)
+  const option = options.find(opt => opt.value === value)
+  return option ? option.label : value
+}
+
+const getAvailableComboboxOptions = (filter) => {
+  const allOptions = getFieldOptions(filter.field)
+  const selectedValues = getSelectedValues(filter.value)
+  return allOptions
+    .filter(option => !selectedValues.includes(option.value))
+    .map(option => ({
+      label: option.label,
+      value: option.value
+    }))
+}
+
+const handleMultiSelectChange = (filter, newValue) => {
+  if (!newValue) return
+  
+  const values = getSelectedValues(filter.value)
+  if (!values.includes(newValue)) {
+    values.push(newValue)
+    filter.value = values.join(', ')
+  }
+  // Clear the combobox selection
+  filter.multiSelectValue = null
+}
+
+const getLinkComboboxOptions = (filter) => {
+  if (!filter.suggestions || !Array.isArray(filter.suggestions)) {
+    return []
+  }
+  return filter.suggestions.map(suggestion => {
+    if (typeof suggestion === 'string') {
+      return {
+        label: suggestion,
+        value: suggestion
+      }
+    }
+    return {
+      label: suggestion.subtitle ? `${suggestion.label} - ${suggestion.subtitle}` : suggestion.label || suggestion.value,
+      value: suggestion.value || suggestion.label
+    }
+  })
+}
+
+const handleLinkSelection = (filter, selectedValue) => {
+  const suggestion = filter.suggestions?.find(s => s.value === selectedValue)
+  if (suggestion) {
+    selectLinkValue(filter, suggestion)
+  }
+}
+
+const updateDateRange = (filter) => {
+  if (filter.startValue && filter.endValue) {
+    filter.value = `${filter.startValue},${filter.endValue}`
+  } else {
+    filter.value = ''
+  }
+}
+
 // Main Functions
 const addFilter = (fieldValue) => {
   const fieldConfig = availableFields.find(f => f.value === fieldValue)
@@ -539,6 +757,11 @@ const addFilter = (fieldValue) => {
     operator: getOperatorsForField(fieldValue)[0]?.value || 'equals',
     value: '',
     isMultiSelect: fieldConfig?.multiSelect || false,
+    // Multi-select specific properties
+    multiSelectValue: null,
+    // Date range specific properties
+    startValue: '',
+    endValue: '',
     // Link-specific properties
     searchValue: '',
     displayValue: '',
@@ -547,6 +770,17 @@ const addFilter = (fieldValue) => {
     // Tags-specific properties
     tagInput: ''
   }
+  
+  // Initialize suggestions for link fields
+  if (getFieldType(fieldValue) === 'link') {
+    handleLinkSearch(newFilter, '')
+  }
+  
+  // Initialize multiselect options for combobox select fields
+  if (getFieldType(fieldValue) === 'select' && fieldConfig?.multiSelect) {
+    newFilter.multiSelectOptions = getFieldOptions(fieldValue)
+  }
+  
   pendingFilters.value.push(newFilter)
 }
 
@@ -559,12 +793,24 @@ const removeAppliedFilter = (index) => {
   emitFilters()
 }
 
-const applyFilters = () => {
+const applyFilters = async () => {
   if (!hasPendingChanges.value) return
   
-  appliedFilters.value = JSON.parse(JSON.stringify(pendingFilters.value))
-  emitFilters()
-  showFilterPanel.value = false
+  // Show loading state
+  isApplyingFilters.value = true
+  
+  try {
+    appliedFilters.value = JSON.parse(JSON.stringify(pendingFilters.value))
+    emitFilters()
+    showFilterPanel.value = false
+  } catch (error) {
+    console.error('Error applying filters:', error)
+  } finally {
+    // Add slight delay for smooth UX
+    setTimeout(() => {
+      isApplyingFilters.value = false
+    }, 500)
+  }
 }
 
 const clearAllFilters = () => {
@@ -574,6 +820,7 @@ const clearAllFilters = () => {
   
   emit("update:searchQuery", '')
   emit("update:filters", [])
+  emit("filters-applied", [])
   
   showFilterPanel.value = false
 }
@@ -588,7 +835,11 @@ const emitFilters = () => {
       displayValue: filter.displayValue || null
     }))
   
+  console.log('Emitting filters:', filterData)
+  
+  // Emit both the old format (for compatibility) and new event
   emit("update:filters", filterData)
+  emit("filters-applied", filterData)
 }
 
 // Event handlers
@@ -606,7 +857,7 @@ watch(() => props.searchQuery, (newValue) => {
   searchQuery.value = newValue
 })
 
-// Load from localStorage on mount
+// Load from localStorage on mount and setup search for link fields
 onMounted(() => {
   const savedFilters = localStorage.getItem('issue_filters')
   if (savedFilters) {
@@ -618,6 +869,15 @@ onMounted(() => {
       console.warn('Failed to parse saved filters:', e)
     }
   }
+
+  // Setup reactive search for link fields
+  watch(() => pendingFilters.value, (newFilters) => {
+    newFilters.forEach(filter => {
+      if (getFieldType(filter.field) === 'link' && filter.searchValue) {
+        handleLinkSearch(filter, filter.searchValue)
+      }
+    })
+  }, { deep: true })
 })
 
 // Save to localStorage when filters change
@@ -710,6 +970,20 @@ select:focus, input:focus {
   animation: slideIn 0.2s ease-in-out;
 }
 
+/* Enhanced filter container styling */
+.filter-container {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.filter-container:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
 @keyframes slideIn {
   from {
     opacity: 0;
@@ -731,24 +1005,60 @@ select:focus, input:focus {
   margin-top: 1rem;
 }
 
+/* Frappe UI Combobox styling improvements */
+.filter-combobox {
+  @apply relative;
+}
+
+.filter-combobox .reka-combobox-trigger {
+  @apply bg-white border-gray-300 hover:border-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 shadow-sm hover:shadow-md;
+}
+
+/* Grid layout improvements */
+.grid-cols-12 {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+/* Enhanced button styling */
+button:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+/* Tag styling improvements */
+.inline-flex {
+  animation: fadeIn 0.3s ease-out;
+}
+
 /* Responsive adjustments */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
+  .grid-cols-12 {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  
+  .col-span-2,
+  .col-span-7,
+  .col-span-1 {
+    grid-column: span 1;
+  }
+  
   .min-w-96 {
     min-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .filter-panel-grid {
+    display: block;
+  }
+  
+  .filter-panel-grid > * {
+    margin-bottom: 0.75rem;
   }
   
   .flex-wrap {
     flex-wrap: wrap;
-  }
-  
-  .w-24 {
-    width: 100%;
-    margin-bottom: 0.5rem;
-  }
-  
-  .w-28 {
-    width: 100%;
-    margin-bottom: 0.5rem;
   }
 }
 </style>

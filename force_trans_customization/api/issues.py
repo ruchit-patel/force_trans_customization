@@ -1,11 +1,269 @@
 import frappe
 from frappe import _
+from datetime import datetime
+import json
+
+
+def process_filter_list(filters):
+    """
+    Process the new filter list structure from frontend
+    Converts filter objects to frappe.get_list compatible format
+    """
+    processed_filters = {}
+    or_filters = []
+    
+    if not filters or not isinstance(filters, list):
+        return processed_filters, or_filters
+    
+    for filter_obj in filters:
+        if not isinstance(filter_obj, dict):
+            continue
+            
+        field = filter_obj.get('field')
+        operator = filter_obj.get('operator')
+        value = filter_obj.get('value')
+        
+        if not field or not operator or value is None or value == '':
+            continue
+            
+        # Convert string values to appropriate types
+        processed_value = convert_filter_value(field, value, operator)
+        
+        # Handle different operators
+        if operator == 'equals':
+            processed_filters[field] = processed_value
+        elif operator == 'not_equals':
+            processed_filters[field] = ['!=', processed_value]
+        elif operator == 'like' or operator == 'contains':
+            if field == 'subject':
+                # Special handling for subject - search in both subject and description
+                or_filters.extend([
+                    ['subject', 'like', f'%{processed_value}%'],
+                    ['description', 'like', f'%{processed_value}%']
+                ])
+            else:
+                processed_filters[field] = ['like', f'%{processed_value}%']
+        elif operator == 'starts_with':
+            processed_filters[field] = ['like', f'{processed_value}%']
+        elif operator == 'ends_with':
+            processed_filters[field] = ['like', f'%{processed_value}']
+        elif operator == 'greater_than':
+            processed_filters[field] = ['>', processed_value]
+        elif operator == 'less_than':
+            processed_filters[field] = ['<', processed_value]
+        elif operator == 'greater_than_equal':
+            processed_filters[field] = ['>=', processed_value]
+        elif operator == 'less_than_equal':
+            processed_filters[field] = ['<=', processed_value]
+        elif operator == 'in':
+            # Handle comma-separated values or arrays
+            if isinstance(processed_value, str):
+                values = [v.strip() for v in processed_value.split(',') if v.strip()]
+            else:
+                values = processed_value if isinstance(processed_value, list) else [processed_value]
+            if values:
+                processed_filters[field] = ['in', values]
+        elif operator == 'not_in':
+            if isinstance(processed_value, str):
+                values = [v.strip() for v in processed_value.split(',') if v.strip()]
+            else:
+                values = processed_value if isinstance(processed_value, list) else [processed_value]
+            if values:
+                processed_filters[field] = ['not in', values]
+        elif operator == 'between':
+            # Handle date/datetime ranges - value should be "start,end"
+            if isinstance(processed_value, str) and ',' in processed_value:
+                parts = [p.strip() for p in processed_value.split(',')]
+                if len(parts) == 2:
+                    processed_filters[field] = ['between', parts]
+        elif operator == 'has' or operator == 'has_any':
+            # For tags - search in _user_tags using custom logic
+            # This will be handled separately in tag filtering
+            if field == '_user_tags':
+                # We'll handle this in a special way since tags are in a separate table
+                continue
+        else:
+            # Default to equals
+            processed_filters[field] = processed_value
+    
+    return processed_filters, or_filters
+
+
+def convert_filter_value(field, value, operator):
+    """
+    Convert filter values to appropriate types based on field type
+    """
+    # Field type mapping
+    field_types = {
+        'creation': 'datetime',
+        'modified': 'datetime',
+        'priority': 'select',
+        'status': 'select',
+        'issue_type': 'select',
+        'subject': 'text',
+        'description': 'text',
+        'raised_by': 'email',
+        'customer': 'link',
+        'project': 'link',
+        'owner': 'link',
+        '_user_tags': 'tags'
+    }
+    
+    field_type = field_types.get(field, 'text')
+    
+    # Convert based on field type
+    if field_type in ['datetime', 'date']:
+        # Handle datetime conversion
+        if isinstance(value, str) and value:
+            try:
+                # Try parsing different datetime formats
+                if 'T' in value:  # ISO format
+                    return value
+                elif '-' in value and ' ' in value:  # YYYY-MM-DD HH:MM:SS
+                    return value
+                elif '-' in value:  # YYYY-MM-DD
+                    return value
+                else:
+                    return value
+            except:
+                return value
+    
+    return value
+
+
+def get_tag_filters(filters):
+    """
+    Extract tag-related filters from the filter list
+    """
+    tag_filters = []
+    if not filters or not isinstance(filters, list):
+        return tag_filters
+    
+    for filter_obj in filters:
+        if isinstance(filter_obj, dict) and filter_obj.get('field') == '_user_tags':
+            tag_filters.append(filter_obj)
+    
+    return tag_filters
+
+
+def get_issues_by_tag_filters(tag_filters):
+    """
+    Get issue names that match tag filters
+    Returns None if no tag filters, empty list if no matches, list of names if matches found
+    """
+    if not tag_filters:
+        return None
+    
+    issue_names_sets = []
+    
+    for tag_filter in tag_filters:
+        operator = tag_filter.get('operator')
+        value = tag_filter.get('value')
+        
+        if not value:
+            continue
+        
+        # Parse tags from value
+        if isinstance(value, str):
+            tags = [t.strip() for t in value.split(',') if t.strip()]
+        else:
+            tags = [value] if not isinstance(value, list) else value
+        
+        if not tags:
+            continue
+        
+        issue_names = set()
+        
+        if operator == 'has' or operator == 'has_any':
+            # Issues that have ANY of the specified tags
+            tag_links = frappe.db.get_all(
+                "Tag Link",
+                filters={
+                    "document_type": "Issue",
+                    "tag": ["in", tags]
+                },
+                fields=["document_name"]
+            )
+            issue_names.update([link.document_name for link in tag_links])
+        
+        elif operator == 'has_all':
+            # Issues that have ALL of the specified tags
+            if len(tags) == 1:
+                # Single tag case
+                tag_links = frappe.db.get_all(
+                    "Tag Link",
+                    filters={
+                        "document_type": "Issue",
+                        "tag": tags[0]
+                    },
+                    fields=["document_name"]
+                )
+                issue_names.update([link.document_name for link in tag_links])
+            else:
+                # Multiple tags - need all
+                potential_issues = frappe.db.get_all(
+                    "Tag Link",
+                    filters={
+                        "document_type": "Issue",
+                        "tag": ["in", tags]
+                    },
+                    fields=["document_name", "tag"]
+                )
+                
+                # Group by issue name
+                issue_tag_counts = {}
+                for link in potential_issues:
+                    if link.document_name not in issue_tag_counts:
+                        issue_tag_counts[link.document_name] = set()
+                    issue_tag_counts[link.document_name].add(link.tag)
+                
+                # Find issues that have all required tags
+                required_tags_set = set(tags)
+                for issue_name, issue_tags in issue_tag_counts.items():
+                    if required_tags_set.issubset(issue_tags):
+                        issue_names.add(issue_name)
+        
+        elif operator == 'not_has':
+            # Issues that do NOT have any of the specified tags
+            all_issues = frappe.db.get_all(
+                "Issue",
+                fields=["name"]
+            )
+            
+            issues_with_tags = frappe.db.get_all(
+                "Tag Link",
+                filters={
+                    "document_type": "Issue",
+                    "tag": ["in", tags]
+                },
+                fields=["document_name"]
+            )
+            
+            issues_with_tags_set = {link.document_name for link in issues_with_tags}
+            issue_names.update([
+                issue.name for issue in all_issues 
+                if issue.name not in issues_with_tags_set
+            ])
+        
+        if issue_names:
+            issue_names_sets.append(issue_names)
+    
+    # Intersect all sets (AND operation between different tag filters)
+    if not issue_names_sets:
+        return None
+    
+    result = issue_names_sets[0]
+    for issue_set in issue_names_sets[1:]:
+        result = result.intersection(issue_set)
+    
+    return list(result)
 
 
 @frappe.whitelist()
 def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=None, order_by="creation desc"):
     """
     Get issues list with custom_users_assigned child table data
+    Enhanced to handle complex filter objects from frontend
     """
     try:
         # Convert string parameters to integers
@@ -14,7 +272,7 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
         
         # Handle filters
         if filters is None:
-            filters = {}
+            filters = []
         elif isinstance(filters, str):
             import json
             filters = json.loads(filters)
@@ -35,28 +293,25 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             "description"
         ]
         
-        # Process filters to handle special cases
-        processed_filters = {}
-        or_filters = []
+        # Process new filter structure from frontend
+        processed_filters, or_filters = process_filter_list(filters)
         
-        for key, value in filters.items():
-            if key == 'subject':
-                # Special handling for subject - search in both subject and description
-                if isinstance(value, list) and len(value) == 2 and value[0] == 'like':
-                    # Create OR filter for subject field to search in both title and description
-                    or_filters.extend([
-                        ['subject', 'like', value[1]],
-                        ['description', 'like', value[1]]
-                    ])
+        # Handle tag filters separately (since tags are in Tag Link table)
+        tag_filters = get_tag_filters(filters)
+        issue_names_from_tags = None
+        
+        if tag_filters:
+            issue_names_from_tags = get_issues_by_tag_filters(tag_filters)
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    # No issues match tag filters
+                    return []
                 else:
-                    # For equals, search only in subject
-                    processed_filters['subject'] = value
-            else:
-                processed_filters[key] = value
+                    # Add name filter to restrict to issues matching tags
+                    processed_filters['name'] = ['in', issue_names_from_tags]
         
-        # Get issues using frappe.get_list
+        # Get issues using frappe.get_list with enhanced filter handling
         if or_filters:
-            # Use or_filters when we have subject search
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
@@ -67,7 +322,6 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
                 limit_start=limit_start
             )
         else:
-            # Normal filters only
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
@@ -114,54 +368,49 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
 def get_issues_count_with_filters(filters=None):
     """
     Get total count of issues with filters (for pagination)
-    This function respects the same permission system as get_issues_with_assignments
+    Enhanced to handle complex filter objects from frontend
     """
     try:
         # Handle filters
         if filters is None:
-            filters = {}
+            filters = []
         elif isinstance(filters, str):
-            import json
             filters = json.loads(filters)
         
-        # Process filters to handle special cases (same as main function)
-        processed_filters = {}
-        or_filters = []
+        # Process new filter structure from frontend
+        processed_filters, or_filters = process_filter_list(filters)
         
-        for key, value in filters.items():
-            if key == 'subject':
-                # Special handling for subject - search in both subject and description
-                if isinstance(value, list) and len(value) == 2 and value[0] == 'like':
-                    # Create OR filter for subject field to search in both title and description
-                    or_filters.extend([
-                        ['subject', 'like', value[1]],
-                        ['description', 'like', value[1]]
-                    ])
+        # Handle tag filters separately
+        tag_filters = get_tag_filters(filters)
+        issue_names_from_tags = None
+        
+        if tag_filters:
+            issue_names_from_tags = get_issues_by_tag_filters(tag_filters)
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    # No issues match tag filters
+                    return 0
                 else:
-                    # For equals, search only in subject
-                    processed_filters['subject'] = value
-            else:
-                processed_filters[key] = value
+                    # Add name filter to restrict to issues matching tags
+                    processed_filters['name'] = ['in', issue_names_from_tags]
         
-        # Use frappe.get_list with count=True to respect permissions
+        # Use frappe.get_list to get count while respecting permissions
         if or_filters:
-            # Use or_filters when we have subject search
             result = frappe.get_list(
                 "Issue",
                 filters=processed_filters,
                 or_filters=or_filters,
-                limit_page_length=0,  # Get all records
+                limit_page_length=0,
                 as_list=True,
-                ignore_permissions=False  # Explicitly respect permissions
+                ignore_permissions=False
             )
         else:
-            # Normal filters only
             result = frappe.get_list(
                 "Issue",
                 filters=processed_filters,
-                limit_page_length=0,  # Get all records
+                limit_page_length=0,
                 as_list=True,
-                ignore_permissions=False  # Explicitly respect permissions
+                ignore_permissions=False
             )
         
         # Return the count of records that the user is allowed to see
@@ -547,14 +796,37 @@ def get_issue_stats():
 
 
 @frappe.whitelist()
-def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, order_by="creation desc"):
+def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, order_by="creation desc", filters=None):
     """
     Get issues filtered by stat type (team_tickets, open_tickets, assigned_to_me, etc.)
+    Enhanced to accept additional filters from the frontend
     """
     try:
         # Convert string parameters to integers
         limit_page_length = int(limit_page_length)
         limit_start = int(limit_start)
+        
+        # Handle additional filters from frontend
+        if filters is None:
+            filters = []
+        elif isinstance(filters, str):
+            try:
+                filters = json.loads(filters)
+            except:
+                filters = []
+        
+        # Process additional filters
+        additional_filters, additional_or_filters = process_filter_list(filters)
+        
+        # Handle tag filters from additional filters
+        tag_filters = get_tag_filters(filters)
+        issue_names_from_tags = None
+        
+        if tag_filters:
+            issue_names_from_tags = get_issues_by_tag_filters(tag_filters)
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    return []  # No issues match tag filters
         
         # Get current user
         current_user = frappe.session.user
@@ -577,15 +849,36 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
         
         # Build filters based on stat type
         if stat_type == "team_tickets":
-            # All issues user can see (no additional filtering)
-            issues = frappe.get_list(
-                "Issue",
-                fields=fields,
-                order_by=order_by,
-                limit_page_length=limit_page_length,
-                limit_start=limit_start,
-                ignore_permissions=False
-            )
+            # All issues user can see with additional filters
+            combined_filters = additional_filters.copy()
+            
+            # Apply tag filtering if needed
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    return []  # No issues match tag filters
+                combined_filters['name'] = ['in', issue_names_from_tags]
+            
+            if additional_or_filters:
+                issues = frappe.get_list(
+                    "Issue",
+                    fields=fields,
+                    filters=combined_filters,
+                    or_filters=additional_or_filters,
+                    order_by=order_by,
+                    limit_page_length=limit_page_length,
+                    limit_start=limit_start,
+                    ignore_permissions=False
+                )
+            else:
+                issues = frappe.get_list(
+                    "Issue",
+                    fields=fields,
+                    filters=combined_filters,
+                    order_by=order_by,
+                    limit_page_length=limit_page_length,
+                    limit_start=limit_start,
+                    ignore_permissions=False
+                )
         
         elif stat_type == "assigned_to_me":
             # Get all issues first, then filter by assignment
@@ -675,27 +968,69 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
         
         elif stat_type == "actionable_tickets":
             # Issues where customer awaits reply (custom_is_response_expected = 1)
-            issues = frappe.get_list(
-                "Issue",
-                fields=fields,
-                filters={"custom_is_response_expected": 1},
-                order_by=order_by,
-                limit_page_length=limit_page_length,
-                limit_start=limit_start,
-                ignore_permissions=False
-            )
+            combined_filters = additional_filters.copy()
+            combined_filters["custom_is_response_expected"] = 1
+            
+            # Apply tag filtering if needed
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    return []
+                combined_filters['name'] = ['in', issue_names_from_tags]
+            
+            if additional_or_filters:
+                issues = frappe.get_list(
+                    "Issue",
+                    fields=fields,
+                    filters=combined_filters,
+                    or_filters=additional_or_filters,
+                    order_by=order_by,
+                    limit_page_length=limit_page_length,
+                    limit_start=limit_start,
+                    ignore_permissions=False
+                )
+            else:
+                issues = frappe.get_list(
+                    "Issue",
+                    fields=fields,
+                    filters=combined_filters,
+                    order_by=order_by,
+                    limit_page_length=limit_page_length,
+                    limit_start=limit_start,
+                    ignore_permissions=False
+                )
         
         elif stat_type == "response_tickets":
             # Issues awaiting customer response (custom_is_response_awaited = 1)
-            issues = frappe.get_list(
-                "Issue",
-                fields=fields,
-                filters={"custom_is_response_awaited": 1},
-                order_by=order_by,
-                limit_page_length=limit_page_length,
-                limit_start=limit_start,
-                ignore_permissions=False
-            )
+            combined_filters = additional_filters.copy()
+            combined_filters["custom_is_response_awaited"] = 1
+            
+            # Apply tag filtering if needed
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    return []
+                combined_filters['name'] = ['in', issue_names_from_tags]
+            
+            if additional_or_filters:
+                issues = frappe.get_list(
+                    "Issue",
+                    fields=fields,
+                    filters=combined_filters,
+                    or_filters=additional_or_filters,
+                    order_by=order_by,
+                    limit_page_length=limit_page_length,
+                    limit_start=limit_start,
+                    ignore_permissions=False
+                )
+            else:
+                issues = frappe.get_list(
+                    "Issue",
+                    fields=fields,
+                    filters=combined_filters,
+                    order_by=order_by,
+                    limit_page_length=limit_page_length,
+                    limit_start=limit_start,
+                    ignore_permissions=False
+                )
         
         else:
             # Default to all issues
@@ -739,22 +1074,64 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
 
 
 @frappe.whitelist()
-def get_stat_filter_count(stat_type):
+def get_stat_filter_count(stat_type, filters=None):
     """
     Get count of issues for a specific stat filter type
+    Enhanced to accept additional filters from the frontend
     """
     try:
+        # Handle additional filters from frontend
+        if filters is None:
+            filters = []
+        elif isinstance(filters, str):
+            try:
+                filters = json.loads(filters)
+            except:
+                filters = []
+        
+        # Process additional filters
+        additional_filters, additional_or_filters = process_filter_list(filters)
+        
+        # Handle tag filters from additional filters
+        tag_filters = get_tag_filters(filters)
+        issue_names_from_tags = None
+        
+        if tag_filters:
+            issue_names_from_tags = get_issues_by_tag_filters(tag_filters)
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    return 0  # No issues match tag filters
+        
         # Get current user
         current_user = frappe.session.user
         
         if stat_type == "team_tickets":
-            # All issues user can see
-            all_issues = frappe.get_list(
-                "Issue",
-                limit_page_length=0,
-                as_list=True,
-                ignore_permissions=False
-            )
+            # All issues user can see with additional filters
+            combined_filters = additional_filters.copy()
+            
+            # Apply tag filtering if needed
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    return 0  # No issues match tag filters
+                combined_filters['name'] = ['in', issue_names_from_tags]
+            
+            if additional_or_filters:
+                all_issues = frappe.get_list(
+                    "Issue",
+                    filters=combined_filters,
+                    or_filters=additional_or_filters,
+                    limit_page_length=0,
+                    as_list=True,
+                    ignore_permissions=False
+                )
+            else:
+                all_issues = frappe.get_list(
+                    "Issue",
+                    filters=combined_filters,
+                    limit_page_length=0,
+                    as_list=True,
+                    ignore_permissions=False
+                )
             return len(all_issues)
         
         elif stat_type == "assigned_to_me":
@@ -825,23 +1202,63 @@ def get_stat_filter_count(stat_type):
             return 0
         
         elif stat_type == "actionable_tickets":
-            result = frappe.get_list(
-                "Issue",
-                filters={"custom_is_response_expected": 1},
-                limit_page_length=0,
-                as_list=True,
-                ignore_permissions=False
-            )
+            # Issues where customer awaits reply with additional filters
+            combined_filters = additional_filters.copy()
+            combined_filters["custom_is_response_expected"] = 1
+            
+            # Apply tag filtering if needed
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    return 0
+                combined_filters['name'] = ['in', issue_names_from_tags]
+            
+            if additional_or_filters:
+                result = frappe.get_list(
+                    "Issue",
+                    filters=combined_filters,
+                    or_filters=additional_or_filters,
+                    limit_page_length=0,
+                    as_list=True,
+                    ignore_permissions=False
+                )
+            else:
+                result = frappe.get_list(
+                    "Issue",
+                    filters=combined_filters,
+                    limit_page_length=0,
+                    as_list=True,
+                    ignore_permissions=False
+                )
             return len(result)
         
         elif stat_type == "response_tickets":
-            result = frappe.get_list(
-                "Issue",
-                filters={"custom_is_response_awaited": 1},
-                limit_page_length=0,
-                as_list=True,
-                ignore_permissions=False
-            )
+            # Issues awaiting customer response with additional filters
+            combined_filters = additional_filters.copy()
+            combined_filters["custom_is_response_awaited"] = 1
+            
+            # Apply tag filtering if needed
+            if issue_names_from_tags is not None:
+                if len(issue_names_from_tags) == 0:
+                    return 0
+                combined_filters['name'] = ['in', issue_names_from_tags]
+            
+            if additional_or_filters:
+                result = frappe.get_list(
+                    "Issue",
+                    filters=combined_filters,
+                    or_filters=additional_or_filters,
+                    limit_page_length=0,
+                    as_list=True,
+                    ignore_permissions=False
+                )
+            else:
+                result = frappe.get_list(
+                    "Issue",
+                    filters=combined_filters,
+                    limit_page_length=0,
+                    as_list=True,
+                    ignore_permissions=False
+                )
             return len(result)
         
         else:
