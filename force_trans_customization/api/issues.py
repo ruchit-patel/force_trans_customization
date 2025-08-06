@@ -35,15 +35,47 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             "description"
         ]
         
+        # Process filters to handle special cases
+        processed_filters = {}
+        or_filters = []
+        
+        for key, value in filters.items():
+            if key == 'subject':
+                # Special handling for subject - search in both subject and description
+                if isinstance(value, list) and len(value) == 2 and value[0] == 'like':
+                    # Create OR filter for subject field to search in both title and description
+                    or_filters.extend([
+                        ['subject', 'like', value[1]],
+                        ['description', 'like', value[1]]
+                    ])
+                else:
+                    # For equals, search only in subject
+                    processed_filters['subject'] = value
+            else:
+                processed_filters[key] = value
+        
         # Get issues using frappe.get_list
-        issues = frappe.get_list(
-            "Issue",
-            fields=fields,
-            filters=filters,
-            order_by=order_by,
-            limit_page_length=limit_page_length,
-            limit_start=limit_start
-        )
+        if or_filters:
+            # Use or_filters when we have subject search
+            issues = frappe.get_list(
+                "Issue",
+                fields=fields,
+                filters=processed_filters,
+                or_filters=or_filters,
+                order_by=order_by,
+                limit_page_length=limit_page_length,
+                limit_start=limit_start
+            )
+        else:
+            # Normal filters only
+            issues = frappe.get_list(
+                "Issue",
+                fields=fields,
+                filters=processed_filters,
+                order_by=order_by,
+                limit_page_length=limit_page_length,
+                limit_start=limit_start
+            )
         
         # For each issue, fetch the custom_users_assigned child table data and tags
         for issue in issues:
@@ -92,15 +124,45 @@ def get_issues_count_with_filters(filters=None):
             import json
             filters = json.loads(filters)
         
+        # Process filters to handle special cases (same as main function)
+        processed_filters = {}
+        or_filters = []
+        
+        for key, value in filters.items():
+            if key == 'subject':
+                # Special handling for subject - search in both subject and description
+                if isinstance(value, list) and len(value) == 2 and value[0] == 'like':
+                    # Create OR filter for subject field to search in both title and description
+                    or_filters.extend([
+                        ['subject', 'like', value[1]],
+                        ['description', 'like', value[1]]
+                    ])
+                else:
+                    # For equals, search only in subject
+                    processed_filters['subject'] = value
+            else:
+                processed_filters[key] = value
+        
         # Use frappe.get_list with count=True to respect permissions
-        # This will apply the same permission logic as defined in permissions.py
-        result = frappe.get_list(
-            "Issue",
-            filters=filters,
-            limit_page_length=0,  # Get all records
-            as_list=True,
-            ignore_permissions=False  # Explicitly respect permissions
-        )
+        if or_filters:
+            # Use or_filters when we have subject search
+            result = frappe.get_list(
+                "Issue",
+                filters=processed_filters,
+                or_filters=or_filters,
+                limit_page_length=0,  # Get all records
+                as_list=True,
+                ignore_permissions=False  # Explicitly respect permissions
+            )
+        else:
+            # Normal filters only
+            result = frappe.get_list(
+                "Issue",
+                filters=processed_filters,
+                limit_page_length=0,  # Get all records
+                as_list=True,
+                ignore_permissions=False  # Explicitly respect permissions
+            )
         
         # Return the count of records that the user is allowed to see
         return len(result)

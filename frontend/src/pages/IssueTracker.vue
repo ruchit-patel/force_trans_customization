@@ -368,25 +368,55 @@ const debouncedFilterChange = () => {
     clearTimeout(filterChangeTimeout)
   }
   filterChangeTimeout = setTimeout(() => {
-    // If user is changing filters (not search), exit stat filter mode
-    if (isUsingStatFilter.value) {
-      isUsingStatFilter.value = false
+    // Check if all filters are empty (default state)
+    const hasActiveFilters = Object.values(nonSearchFilters.value).some(value => 
+      value && value !== '' && value !== 'creation desc'
+    )
+    
+    if (!hasActiveFilters) {
+      // ⭐ No filters active - return to default page load state
+      console.log('No filters active, loading default state')
+      
+      // Reset to default stat filter mode (like page load)
+      isUsingStatFilter.value = true
       currentStatFilter.value = 'team_tickets'
+      
+      // Reset to first page
+      currentPage.value = 1
+      
+      // Load default data with stat filter (same as onMounted)
+      filterIssuesByStat('team_tickets', {
+        limit_page_length: itemsPerPage.value,
+        limit_start: 0,
+        order_by: sortOrder.value,
+      })
+      
+      // Load default count for stat filter
+      getStatFilterCount('team_tickets')
+    } else {
+      // ⭐ Filters are active - use normal filtering
+      console.log('Filters active, using normal mode')
+      
+      // If user is changing filters (not search), exit stat filter mode
+      if (isUsingStatFilter.value) {
+        isUsingStatFilter.value = false
+        currentStatFilter.value = 'team_tickets'
+      }
+
+      // Reset to first page when filters change
+      currentPage.value = 1
+
+      // Reload issues with new filters and sort order
+      reloadIssues({
+        filters: nonSearchFilters.value,
+        order_by: sortOrder.value,
+        limit_page_length: itemsPerPage.value,
+        limit_start: 0,
+      })
+
+      // Also reload count with new filters
+      getIssuesCount(nonSearchFilters.value)
     }
-
-    // Reset to first page when filters change
-    currentPage.value = 1
-
-    // Reload issues with new filters and sort order
-    reloadIssues({
-      filters: nonSearchFilters.value,
-      order_by: sortOrder.value,
-      limit_page_length: itemsPerPage.value,
-      limit_start: 0,
-    })
-
-    // Also reload count with new filters
-    getIssuesCount(nonSearchFilters.value)
   }, 300) // 300ms debounce
 }
 

@@ -631,7 +631,7 @@ const clearAllDynamicFilters = () => {
     searchBoxRef.value.clearSearch?.()
   }
   
-  // Reset local filters to default values
+  // Reset local filters to default values (completely empty for default load)
   localFilters.value = {
     status: '',
     priority: '',
@@ -647,10 +647,15 @@ const clearAllDynamicFilters = () => {
   
   // Emit changes to parent to reset issue table to default state
   emit("update:searchQuery", '')
-  emit("update:filters", { ...localFilters.value })
   
-  // Update the applied filters (which will be empty, showing all issues)
-  updateDynamicFiltersOutput()
+  // ⭐ Important: Emit completely empty filters to trigger default page load state
+  emit("update:filters", {
+    status: '',
+    priority: '',
+    assignee: '',
+    tags: '',
+    sortBy: 'creation desc'
+  })
   
   // Close filter panel if open
   showFilterPanel.value = false
@@ -668,25 +673,64 @@ const updateDynamicFiltersOutput = () => {
   
   appliedFilters.value.forEach(filter => {
     if (filter.value) {
-      const key = filter.field === 'issue_type' ? 'tags' : 
-                  filter.field === 'raised_by' ? 'assignee' : filter.field
+      // Map frontend field names to backend field names
+      let key = filter.field
+      if (filter.field === 'issue_type') {
+        key = 'tags'
+      } else if (filter.field === 'raised_by') {
+        key = 'assignee'  
+      }
+      // Keep subject as subject - it maps to Issue.subject field
       
+      // Handle different operators properly
       if (filter.operator === 'equals') {
         filterObj[key] = filter.value
+      } else if (filter.operator === 'like') {
+        // For like searches, use array format: [operator, value]
+        filterObj[key] = ['like', `%${filter.value}%`]
       } else if (filter.operator === 'contains') {
-        filterObj[key] = filter.value
+        // Contains is same as like
+        filterObj[key] = ['like', `%${filter.value}%`]
       } else if (filter.operator === 'not_equals') {
-        filterObj[key] = `!${filter.value}`
+        filterObj[key] = ['!=', filter.value]
       } else if (filter.operator === 'in') {
-        filterObj[key] = filter.value
+        // For multiple values (comma separated)
+        const values = filter.value.split(',').map(v => v.trim()).filter(v => v)
+        filterObj[key] = ['in', values]
+      } else if (filter.operator === 'starts_with') {
+        filterObj[key] = ['like', `${filter.value}%`]
+      } else if (filter.operator === 'ends_with') {
+        filterObj[key] = ['like', `%${filter.value}`]
       }
       // Add more operator handling as needed
     }
   })
   
-  // Update local filters and emit
-  localFilters.value = { ...localFilters.value, ...filterObj }
-  emit("update:filters", { ...localFilters.value })
+  // ⭐ If no filters are applied, ensure we send clean default state
+  if (Object.keys(filterObj).length === 0) {
+    // Send completely clean filters to parent (triggers default page load state)
+    const defaultFilters = {
+      status: '',
+      priority: '',
+      assignee: '',
+      tags: '',
+      sortBy: 'creation desc'
+    }
+    localFilters.value = defaultFilters
+    emit("update:filters", defaultFilters)
+  } else {
+    // Update local filters and emit with applied filters
+    const updatedFilters = { 
+      status: '',
+      priority: '',
+      assignee: '',
+      tags: '',
+      sortBy: 'creation desc',
+      ...filterObj 
+    }
+    localFilters.value = updatedFilters
+    emit("update:filters", updatedFilters)
+  }
 }
 
 // Helper functions for dynamic filters
@@ -1067,6 +1111,9 @@ const removeAppliedFilter = (index) => {
   updateDynamicFiltersOutput()
   
   // Save to localStorage
+
+
+  
   saveFiltersToStorage()
 }
 
