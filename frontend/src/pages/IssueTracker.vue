@@ -31,7 +31,8 @@
       <!-- Search and Filters -->
       <IssueFilters v-model:searchQuery="searchQuery" v-model:filters="filters" :statusOptions="statusOptions"
         :priorityOptions="priorityOptions" :assigneeOptions="assigneeOptions" :tagsOptions="tagsOptions"
-        :issues="allIssues" :filteredCount="totalIssues" @suggestion-selected="handleSuggestionSelected" />
+        :issues="allIssues" :filteredCount="totalIssues" @suggestion-selected="handleSuggestionSelected" 
+        @filters-applied="handleFiltersApplied" />
 
       <!-- Issues Table -->
       <IssueTable :issues="issues" :loading="isLoading" :sortField="currentSortField"
@@ -124,8 +125,15 @@ const {
 const isUsingStatFilter = ref(false)
 const currentStatFilter = ref('team_tickets') // Default to team tickets
 
-// Custom refresh function that knows about current filtering mode
+// Optimized refresh function using unified approach
 const refreshCurrentView = () => {
+  console.log('Refreshing current view:', { 
+    isUsingStatFilter: isUsingStatFilter.value, 
+    currentStatFilter: currentStatFilter.value,
+    hasCustomFilters: complexFilters.value && complexFilters.value.length > 0
+  })
+
+  // Preserve current pagination when refreshing
   const currentParams = {
     limit_page_length: itemsPerPage.value,
     limit_start: (currentPage.value - 1) * itemsPerPage.value,
@@ -133,16 +141,35 @@ const refreshCurrentView = () => {
   }
 
   if (isUsingStatFilter.value) {
-    // Refresh stat filter view
-    filterIssuesByStat(currentStatFilter.value, currentParams)
-    getStatFilterCount(currentStatFilter.value)
-  } else {
-    // Refresh regular view
-    reloadIssues({
-      filters: nonSearchFilters.value,
-      ...currentParams,
+    // Refresh using stat filter mode with current pagination
+    if (complexFilters.value && complexFilters.value.length > 0) {
+      currentParams.filters = JSON.stringify(complexFilters.value)
+    }
+    
+    // Use Promise.all for better performance during refresh
+    Promise.all([
+      filterIssuesByStat(currentStatFilter.value, currentParams),
+      complexFilters.value && complexFilters.value.length > 0 
+        ? getStatFilterCount(currentStatFilter.value, JSON.stringify(complexFilters.value))
+        : getStatFilterCount(currentStatFilter.value)
+    ]).then(() => {
+      console.log('Stat filter view refreshed successfully')
+    }).catch((error) => {
+      console.error('Error refreshing stat filter view:', error)
     })
-    getIssuesCount(nonSearchFilters.value)
+  } else {
+    // Refresh using regular filter mode
+    Promise.all([
+      reloadIssues({
+        filters: JSON.stringify(complexFilters.value),
+        ...currentParams,
+      }),
+      getIssuesCount(JSON.stringify(complexFilters.value))
+    ]).then(() => {
+      console.log('Regular filter view refreshed successfully')
+    }).catch((error) => {
+      console.error('Error refreshing regular filter view:', error)
+    })
   }
 }
 
@@ -222,10 +249,15 @@ const currentSortDirection = computed(() => {
 })
 
 const handleSort = ({ field, direction }) => {
-  // Update the sort order in the composable
+  // Update the sort order in filters
   const newSortOrder = `${field} ${direction}`
-  // This will trigger the watcher and reload data
   filters.value.sortBy = newSortOrder
+  
+  // Reset to first page when sorting
+  currentPage.value = 1
+  
+  // Trigger the same API call that happens when clicking cards
+  refreshCurrentView()
 }
 
 // Handle suggestion selection from search - now just opens issue in new tab
@@ -234,8 +266,71 @@ const handleSuggestionSelected = (suggestion) => {
   // The CustomSearchBox component handles opening the issue in a new tab
 }
 
+// Handle complex filter objects from IssueFilters component
+const complexFilters = ref([])
+
+const handleFiltersApplied = (filterArray) => {
+  console.log('Filters applied:', filterArray)
+  
+  // Store the complex filters
+  complexFilters.value = filterArray
+  
+  // Reset to first page when applying new filters
+  currentPage.value = 1
+  
+  // Apply the current filtering logic based on the situation
+  if (filterArray && filterArray.length > 0) {
+    // User has applied custom filters
+    if (isUsingStatFilter.value) {
+      // User is on a stat card and applying additional filters
+      console.log('Applying custom filters on top of card filter:', currentStatFilter.value)
+      applyCardFilterWithCustomFilters(currentStatFilter.value)
+    } else {
+      // User is applying custom filters without any stat card
+      console.log('Applying custom filters in regular mode')
+      applyCustomFiltersOnly()
+    }
+  } else {
+    // No filters applied - return to default team tickets view
+    console.log('No filters applied, returning to default view')
+    returnToDefaultView()
+  }
+}
+
+// Function to apply custom filters without stat card
+const applyCustomFiltersOnly = () => {
+  isUsingStatFilter.value = false
+  currentStatFilter.value = 'team_tickets'
+  
+  // Use Promise.all for better performance
+  Promise.all([
+    reloadIssues({
+      filters: JSON.stringify(complexFilters.value),
+      order_by: sortOrder.value,
+      limit_page_length: itemsPerPage.value,
+      limit_start: 0,
+    }),
+    getIssuesCount(JSON.stringify(complexFilters.value))
+  ]).then(() => {
+    console.log('Custom filters applied successfully')
+  }).catch((error) => {
+    console.error('Error applying custom filters:', error)
+  })
+}
+
+// Function to return to default view
+const returnToDefaultView = () => {
+  isUsingStatFilter.value = true
+  currentStatFilter.value = 'team_tickets'
+  
+  // Use the unified function for consistency
+  applyCardFilterWithCustomFilters('team_tickets')
+}
+
 // Handle stat filter changes from IssueStats component
 const handleStatFilterChanged = (statType) => {
+  console.log('Card clicked:', statType, 'Current filters:', complexFilters.value)
+  
   // Set stat filter mode
   isUsingStatFilter.value = true
   currentStatFilter.value = statType
@@ -246,15 +341,38 @@ const handleStatFilterChanged = (statType) => {
   // Reset to first page
   currentPage.value = 1
   
-  // Filter issues by stat type
-  filterIssuesByStat(statType, {
+  // Always apply the card filter with any existing custom filters
+  applyCardFilterWithCustomFilters(statType)
+}
+
+// Unified function to apply card filter with custom filters
+const applyCardFilterWithCustomFilters = (statType) => {
+  // Build parameters for stat filtering
+  const statParams = {
     limit_page_length: itemsPerPage.value,
     limit_start: 0,
     order_by: sortOrder.value,
-  })
+  }
   
-  // Get count for pagination
-  getStatFilterCount(statType)
+  // Always include custom filters if they exist
+  if (complexFilters.value && complexFilters.value.length > 0) {
+    statParams.filters = JSON.stringify(complexFilters.value)
+    console.log('Applying card filter with custom filters:', statType, complexFilters.value)
+  } else {
+    console.log('Applying card filter without custom filters:', statType)
+  }
+  
+  // Make both API calls simultaneously for better performance
+  Promise.all([
+    filterIssuesByStat(statType, statParams),
+    complexFilters.value && complexFilters.value.length > 0 
+      ? getStatFilterCount(statType, JSON.stringify(complexFilters.value))
+      : getStatFilterCount(statType)
+  ]).then(() => {
+    console.log('Card filter applied successfully')
+  }).catch((error) => {
+    console.error('Error applying card filter:', error)
+  })
 }
 
 // Function to clear stat filter and return to normal view
@@ -305,29 +423,43 @@ const assigneeOptions = computed(() => {
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
 
-// Pagination handler
+// Optimized pagination handler using unified approach
 const handlePageChange = ({ page, itemsPerPage: newItemsPerPage, offset }) => {
+  console.log('Page change:', { page, newItemsPerPage, offset })
+  
   currentPage.value = page
   itemsPerPage.value = newItemsPerPage
 
+  // Build pagination parameters
+  const paginationParams = {
+    limit_page_length: newItemsPerPage,
+    limit_start: offset,
+    order_by: sortOrder.value,
+  }
+
   if (isUsingStatFilter.value) {
     // Use stat-based filtering for pagination
-    filterIssuesByStat(currentStatFilter.value, {
-      limit_page_length: newItemsPerPage,
-      limit_start: offset,
-      order_by: sortOrder.value,
-    })
+    if (complexFilters.value && complexFilters.value.length > 0) {
+      paginationParams.filters = JSON.stringify(complexFilters.value)
+    }
+    
+    // Only need to reload data, count doesn't change during pagination
+    filterIssuesByStat(currentStatFilter.value, paginationParams)
+      .then(() => {
+        console.log('Pagination completed successfully (stat filter)')
+      }).catch((error) => {
+        console.error('Error during pagination (stat filter):', error)
+      })
   } else {
-    // Use regular filtering for pagination (excluding search)
+    // Use regular filtering for pagination
     reloadIssues({
-      filters: nonSearchFilters.value,
-      order_by: sortOrder.value,
-      limit_page_length: newItemsPerPage,
-      limit_start: offset,
+      filters: JSON.stringify(complexFilters.value),
+      ...paginationParams,
+    }).then(() => {
+      console.log('Pagination completed successfully (regular filter)')
+    }).catch((error) => {
+      console.error('Error during pagination (regular filter):', error)
     })
-
-    // Also reload count with current filters
-    getIssuesCount(nonSearchFilters.value)
   }
 }
 
@@ -358,65 +490,21 @@ const nonSearchFilters = computed(() => {
   return filterObj
 })
 
-// Optimized watcher with debouncing to prevent excessive API calls
-let filterChangeTimeout = null
-const debouncedFilterChange = () => {
-  if (filterChangeTimeout) {
-    clearTimeout(filterChangeTimeout)
-  }
-  filterChangeTimeout = setTimeout(() => {
-    // If user is changing filters (not search), exit stat filter mode
-    if (isUsingStatFilter.value) {
-      isUsingStatFilter.value = false
-      currentStatFilter.value = 'team_tickets'
-    }
-
-    // Reset to first page when filters change
-    currentPage.value = 1
-
-    // Reload issues with new filters and sort order
-    reloadIssues({
-      filters: nonSearchFilters.value,
-      order_by: sortOrder.value,
-      limit_page_length: itemsPerPage.value,
-      limit_start: 0,
-    })
-
-    // Also reload count with new filters
-    getIssuesCount(nonSearchFilters.value)
-  }, 300) // 300ms debounce
-}
-
-// Watch for filter changes and reload data from server when needed
-// Note: We exclude search-related filters to prevent table updates while typing
-watch(
-  [nonSearchFilters, sortOrder],
-  debouncedFilterChange,
-  { deep: true },
-)
+// Note: Filter changes are now handled by the IssueFilters component through handleFiltersApplied()
+// This provides better performance and more precise control over when filtering occurs
+// No more watchers or debouncing needed - filtering happens only on explicit user actions
 
 // Search query changes no longer trigger table updates since suggestions open in new tabs
 
-// Note: We intentionally do NOT watch debouncedSearchQuery for table updates
-// The table should only update when:
-// 1. A suggestion is explicitly selected (handled in handleSuggestionSelected)
-// 2. Other filters are changed (handled in the watcher above)
-// 3. Search is cleared while in suggestion mode (handled in the searchQuery watcher above)
-
 onMounted(() => {
+  console.log('IssueTracker mounted, initializing with default view')
+  
   // Start with default stat filter (Team Tickets) active
   isUsingStatFilter.value = true
   currentStatFilter.value = 'team_tickets'
   
-  // Load initial data with stat filter
-  filterIssuesByStat('team_tickets', {
-    limit_page_length: itemsPerPage.value,
-    limit_start: 0,
-    order_by: sortOrder.value,
-  })
-  
-  // Load initial count for stat filter
-  getStatFilterCount('team_tickets')
+  // Load initial data using unified approach
+  applyCardFilterWithCustomFilters('team_tickets')
 
   // Listen for list update events from the composable
   window.addEventListener('issueListUpdated', (event) => {

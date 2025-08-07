@@ -1841,6 +1841,11 @@ lucide-static@^0.479.0:
   resolved "https://registry.yarnpkg.com/lucide-static/-/lucide-static-0.479.0.tgz#820318a03ab207a6242520aaf2156ff3384fd3e2"
   integrity sha512-E+w3/8lKFpey3lZNKZfzHQGX+t/CH/afpPDdQxjBgStZ2bXY+CxI5KFX9TW818gYndLjV43fZJ7FqAO9kTCK4A==
 
+lucide-vue-next@^0.536.0:
+  version "0.536.0"
+  resolved "https://registry.yarnpkg.com/lucide-vue-next/-/lucide-vue-next-0.536.0.tgz#dda25afe86b1c8825eeffad19251182c6f69bbe4"
+  integrity sha512-ypauLrs4PymzxBKvEiuyo1HqOqjPdBdAtATCSPs4hLgqEA0JAEINWfQbGoLEkaEixT7gsTeSK5TAvOhAcaHfCA==
+
 magic-string@^0.30.17:
   version "0.30.17"
   resolved "https://registry.yarnpkg.com/magic-string/-/magic-string-0.30.17.tgz#450a449673d2460e5bbcfba9a61916a1714c7453"
