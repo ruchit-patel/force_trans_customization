@@ -99,11 +99,12 @@ def process_filter_list(filters):
                 parts = [p.strip() for p in processed_value.split(',')]
                 if len(parts) == 2:
                     processed_filters[field] = ['between', parts]
-        elif operator == 'has' or operator == 'has_any':
+        elif operator == 'has' or operator == 'has_all' or operator == 'not_has':
             # For tags - search in _user_tags using custom logic
             # This will be handled separately in tag filtering
             if field == '_user_tags':
                 # We'll handle this in a special way since tags are in a separate table
+                print(f"   🏷️  Filter {i+1}: Tag filter will be processed separately → {field} {operator} {processed_value}")
                 continue
         else:
             # Default to equals
@@ -187,15 +188,20 @@ def get_issues_by_tag_filters(tag_filters):
     Returns None if no tag filters, empty list if no matches, list of names if matches found
     """
     if not tag_filters:
+        print("🏷️  No tag filters provided")
         return None
     
+    print(f"🏷️  PROCESSING {len(tag_filters)} TAG FILTER(S):")
     issue_names_sets = []
     
-    for tag_filter in tag_filters:
+    for i, tag_filter in enumerate(tag_filters):
         operator = tag_filter.get('operator')
         value = tag_filter.get('value')
         
+        print(f"   🏷️  Tag Filter {i+1}: operator='{operator}', value='{value}'")
+        
         if not value:
+            print(f"   ❌ Tag Filter {i+1}: Skipped (no value)")
             continue
         
         # Parse tags from value
@@ -204,13 +210,17 @@ def get_issues_by_tag_filters(tag_filters):
         else:
             tags = [value] if not isinstance(value, list) else value
         
+        print(f"   📝 Tag Filter {i+1}: Parsed tags = {tags}")
+        
         if not tags:
+            print(f"   ❌ Tag Filter {i+1}: Skipped (no valid tags)")
             continue
         
         issue_names = set()
         
         if operator == 'has':
             # Issues that have ANY of the specified tags (A OR B OR C)
+            print(f"   🔍 Tag Filter {i+1}: Searching for issues with ANY of these tags...")
             tag_links = frappe.db.get_all(
                 "Tag Link",
                 filters={
@@ -220,11 +230,14 @@ def get_issues_by_tag_filters(tag_filters):
                 fields=["document_name"]
             )
             issue_names.update([link.document_name for link in tag_links])
+            print(f"   ✅ Tag Filter {i+1}: Found {len(issue_names)} issues with any of the tags")
         
         elif operator == 'has_all':
-            # Issues that have ALL of the specified tags
+            # Issues that have ALL of the specified tags (A AND B AND C)
+            print(f"   🔍 Tag Filter {i+1}: Searching for issues with ALL of these tags...")
             if len(tags) == 1:
                 # Single tag case
+                print(f"   📝 Tag Filter {i+1}: Single tag case - searching for '{tags[0]}'")
                 tag_links = frappe.db.get_all(
                     "Tag Link",
                     filters={
@@ -234,8 +247,10 @@ def get_issues_by_tag_filters(tag_filters):
                     fields=["document_name"]
                 )
                 issue_names.update([link.document_name for link in tag_links])
+                print(f"   ✅ Tag Filter {i+1}: Found {len(issue_names)} issues with the tag")
             else:
                 # Multiple tags - need all
+                print(f"   📝 Tag Filter {i+1}: Multiple tags case - need ALL {len(tags)} tags")
                 potential_issues = frappe.db.get_all(
                     "Tag Link",
                     filters={
@@ -244,6 +259,7 @@ def get_issues_by_tag_filters(tag_filters):
                     },
                     fields=["document_name", "tag"]
                 )
+                print(f"   🔍 Tag Filter {i+1}: Found {len(potential_issues)} tag links to analyze")
                 
                 # Group by issue name
                 issue_tag_counts = {}
@@ -252,18 +268,25 @@ def get_issues_by_tag_filters(tag_filters):
                         issue_tag_counts[link.document_name] = set()
                     issue_tag_counts[link.document_name].add(link.tag)
                 
+                print(f"   📊 Tag Filter {i+1}: Analyzing {len(issue_tag_counts)} unique issues")
+                
                 # Find issues that have all required tags
                 required_tags_set = set(tags)
                 for issue_name, issue_tags in issue_tag_counts.items():
                     if required_tags_set.issubset(issue_tags):
                         issue_names.add(issue_name)
+                        print(f"   ✅ Tag Filter {i+1}: Issue '{issue_name}' has all required tags: {issue_tags}")
+                
+                print(f"   ✅ Tag Filter {i+1}: Found {len(issue_names)} issues with ALL required tags")
         
         elif operator == 'not_has':
-            # Issues that do NOT have any of the specified tags
+            # Issues that do NOT have ANY of the specified tags (NOT A AND NOT B)
+            print(f"   🔍 Tag Filter {i+1}: Searching for issues WITHOUT any of these tags...")
             all_issues = frappe.db.get_all(
                 "Issue",
                 fields=["name"]
             )
+            print(f"   📊 Tag Filter {i+1}: Total issues in system: {len(all_issues)}")
             
             issues_with_tags = frappe.db.get_all(
                 "Tag Link",
@@ -273,25 +296,41 @@ def get_issues_by_tag_filters(tag_filters):
                 },
                 fields=["document_name"]
             )
+            print(f"   🔍 Tag Filter {i+1}: Issues with specified tags: {len(issues_with_tags)}")
             
             issues_with_tags_set = {link.document_name for link in issues_with_tags}
             issue_names.update([
                 issue.name for issue in all_issues 
                 if issue.name not in issues_with_tags_set
             ])
+            print(f"   ✅ Tag Filter {i+1}: Found {len(issue_names)} issues WITHOUT the specified tags")
         
         if issue_names:
             issue_names_sets.append(issue_names)
+            print(f"   📝 Tag Filter {i+1}: Added {len(issue_names)} issues to result set")
+        else:
+            print(f"   ❌ Tag Filter {i+1}: No matching issues found")
     
     # Intersect all sets (AND operation between different tag filters)
     if not issue_names_sets:
+        print("🏷️  TAG FILTER RESULT: No valid tag filters produced results")
         return None
     
+    print(f"🏷️  TAG FILTER INTERSECTION: Combining {len(issue_names_sets)} result set(s)")
     result = issue_names_sets[0]
-    for issue_set in issue_names_sets[1:]:
-        result = result.intersection(issue_set)
+    print(f"   📊 Starting with {len(result)} issues from first filter")
     
-    return list(result)
+    for i, issue_set in enumerate(issue_names_sets[1:], 2):
+        result = result.intersection(issue_set)
+        print(f"   📊 After intersecting with filter {i}: {len(result)} issues remain")
+    
+    final_result = list(result)
+    print(f"🏷️  FINAL TAG FILTER RESULT: {len(final_result)} issues")
+    if final_result:
+        print(f"   📄 Issues: {final_result[:5]}{'...' if len(final_result) > 5 else ''}")
+    print("-"*40)
+    
+    return final_result
 
 
 @frappe.whitelist()
