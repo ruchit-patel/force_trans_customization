@@ -215,15 +215,6 @@
                             {{ option.label }}
                           </option>
                         </select>
-                        
-                        <!-- Combobox for other select fields -->
-                        <div v-else class="filter-combobox">
-                          <Combobox
-                            v-model="filter.value" 
-                            :options="getComboboxOptions(filter.field)"
-                            :placeholder="`Select ${getFieldLabel(filter.field)}...`"
-                          />
-                        </div>
                       </div>
                       
                       <!-- Multi-select for tags, users, etc -->
@@ -239,44 +230,60 @@
                             </button>
                           </span>
                         </div>
-                        <div class="filter-combobox">
-                          <Combobox
-                            v-model="filter.multiSelectValue"
-                            :options="getAvailableComboboxOptions(filter)"
-                            :placeholder="`Add ${getFieldLabel(filter.field)}...`"
-                            @update:model-value="handleMultiSelectChange(filter, $event)"
-                          />
-                        </div>
                       </div>
                     </div>
 
                     <!-- Link/Reference Input with ComboBox -->
                     <div v-else-if="getFieldType(filter.field) === 'link'" class="space-y-2">
-                      <div class="filter-combobox">
-                        <Combobox
-                          v-model="filter.value"
-                          :options="getLinkComboboxOptions(filter)"
-                          :placeholder="`Search and select ${getFieldLabel(filter.field)}...`"
-                          @update:model-value="handleLinkSelection(filter, $event)"
-                        />
-                      </div>
-                      
-                      <!-- Selected Value Display -->
-                      <div v-if="filter.value && filter.displayValue" 
-                        class="p-2 bg-green-50 border border-green-200 rounded-md text-sm">
-                        <div class="flex items-center justify-between">
-                          <span class="text-green-800 font-medium">Selected: {{ filter.displayValue }}</span>
-                          <button @click="clearLinkValue(filter)" class="text-green-600 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                      <!-- Multi-select for all link fields -->
+                      <div class="space-y-2">
+                        <!-- Selected Items Display -->
+                        <div v-if="getSelectedValues(filter.value).length > 0" class="flex flex-wrap gap-1 mb-2 p-2 bg-white rounded-md border border-gray-200">
+                          <span v-for="(selectedValue, idx) in getSelectedValues(filter.value)" :key="idx"
+                            class="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full border border-blue-200 hover:bg-blue-200 transition-colors">
+                            {{ getDisplayValueForUser(selectedValue, filter) }}
+                            <button @click="removeSelectedValue(filter, idx)" class="ml-1 text-blue-600 hover:text-red-600 transition-colors">
+                              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                              </svg>
+                            </button>
+                          </span>
+                        </div>
+                        
+                        <!-- Search Input -->
+                        <div class="relative">
+                          <input 
+                            v-model="filter.searchValue" 
+                            @input="handleLinkSearch(filter, filter.searchValue)"
+                            type="text" 
+                            :placeholder="`Search and add ${getFieldLabel(filter.field)}...`"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                          
+                          <!-- Loading indicator -->
+                          <div v-if="filter.loading" class="absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <svg class="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
+                          </div>
+                        </div>
+                        
+                        <!-- Search Results Dropdown -->
+                        <div v-if="filter.suggestions && filter.suggestions.length > 0 && filter.searchValue" 
+                          class="max-h-48 overflow-y-auto border border-gray-200 rounded-md bg-white shadow-lg">
+                          <button v-for="(suggestion, idx) in filter.suggestions" :key="idx"
+                            @click="addUserToMultiSelect(filter, suggestion)"
+                            class="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0">
+                            <div class="font-medium text-gray-900">{{ suggestion.label }}</div>
+                            <div class="text-xs text-gray-500">{{ suggestion.subtitle }}</div>
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    <!-- Tags/Multi-value Input -->
+                    <!-- Tags/Multi-value Input with Search -->
                     <div v-else-if="getFieldType(filter.field) === 'tags'" class="space-y-2">
+                      <!-- Selected Tags Display -->
                       <div v-if="getTags(filter.value).length > 0" class="flex flex-wrap gap-1 mb-2 p-2 bg-white rounded-md border border-gray-200">
                         <span v-for="(tag, idx) in getTags(filter.value)" :key="idx"
                           class="inline-flex items-center px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full border border-purple-200 hover:bg-purple-200 transition-colors">
@@ -288,13 +295,45 @@
                           </button>
                         </span>
                       </div>
-                      <input v-model="filter.tagInput" 
-                        @keyup.enter="addTag(filter)"
-                        @keyup.comma="addTag(filter)"
-                        type="text" 
-                        placeholder="Type tags and press Enter (comma separated)"
-                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
-                      <p class="text-xs text-gray-500 italic">Press Enter or comma to add tags</p>
+                      
+                      <!-- Tag Search Input -->
+                      <div class="relative">
+                        <input v-model="filter.tagInput" 
+                          @input="handleTagSearch(filter, filter.tagInput)"
+                          @keyup.enter="addTagFromInput(filter)"
+                          @keyup.comma="addTagFromInput(filter)"
+                          type="text" 
+                          placeholder="Search and select tags or type new ones..."
+                          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
+                        
+                        <!-- Loading indicator -->
+                        <div v-if="filter.loadingTags" class="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          <svg class="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        </div>
+                      </div>
+                      
+                      <!-- Tag Suggestions Dropdown -->
+                      <div v-if="filter.tagSuggestions && filter.tagSuggestions.length > 0" 
+                        class="max-h-48 overflow-y-auto border border-gray-200 rounded-md bg-white shadow-lg">
+                        <button v-for="(tagSuggestion, idx) in filter.tagSuggestions" :key="idx"
+                          @click="addTagFromSuggestion(filter, tagSuggestion)"
+                          class="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0">
+                          <div class="flex items-center justify-between">
+                            <div>
+                              <div class="font-medium text-gray-900">{{ tagSuggestion.label }}</div>
+                              <div class="text-xs text-gray-500">{{ tagSuggestion.subtitle }}</div>
+                            </div>
+                            <div v-if="tagSuggestion.color" 
+                              class="w-3 h-3 rounded-full border border-gray-300" 
+                              :style="{ backgroundColor: tagSuggestion.color }"></div>
+                          </div>
+                        </button>
+                      </div>
+                      
+                      <p class="text-xs text-gray-500 italic">Search existing tags or press Enter/comma to create new tags</p>
                     </div>
                   </div>
 
@@ -345,7 +384,7 @@
 </template>
 
 <script setup>
-import { Dropdown, Combobox } from "frappe-ui"
+import { Dropdown, Combobox, Autocomplete } from "frappe-ui"
 import { computed, ref, watch, onMounted, onUnmounted } from "vue"
 import CustomSearchBox from "./CustomSearchBox.vue"
 
@@ -380,11 +419,10 @@ const availableFields = [
   { value: 'raised_by', label: 'Raised By', type: 'email' },
   { value: 'owner', label: 'Owner', type: 'link' },
   { value: 'customer', label: 'Customer', type: 'link' },
-  { value: 'project', label: 'Project', type: 'link' },
   { value: 'creation', label: 'Created Date', type: 'datetime' },
   { value: 'modified', label: 'Modified Date', type: 'datetime' },
-  { value: 'custom_users_assigned', label: 'Users Assigned', type: 'select', multiSelect: true },
-  { value: 'custom_assigned_csm_team', label: 'CSM Team', type: 'select' },
+  { value: 'custom_users_assigned', label: 'Users Assigned', type: 'link' },
+  { value: 'custom_assigned_csm_team', label: 'CSM Team', type: 'link' },
   { value: '_user_tags', label: 'Tags', type: 'tags' },
 ]
 
@@ -444,7 +482,9 @@ const operatorsByType = {
   link: [
     { value: 'equals', label: 'Is' },
     { value: 'not_equals', label: 'Is Not' },
-    { value: 'like', label: 'Contains' }
+    { value: 'like', label: 'Contains' },
+    { value: 'in', label: 'In' },
+    { value: 'not_in', label: 'Not In' }
   ],
   datetime: [
     { value: 'equals', label: 'On' },
@@ -477,6 +517,11 @@ const getFieldType = (fieldValue) => {
   return field?.type || 'text'
 }
 
+const isLinkFieldMultiSelect = (fieldValue) => {
+  // All link fields are multiSelect by default
+  return getFieldType(fieldValue) === 'link'
+}
+
 const getFieldLabel = (fieldValue) => {
   const field = availableFields.find(f => f.value === fieldValue)
   return field?.label || fieldValue
@@ -489,7 +534,6 @@ const getFieldPlaceholder = (fieldValue) => {
     raised_by: 'Enter email address...',
     owner: 'Search for owner...',
     customer: 'Search for customer...',
-    project: 'Search for project...',
     creation: 'Select date and time',
     modified: 'Select date and time'
   }
@@ -564,82 +608,158 @@ const addTag = (filter) => {
   filter.tagInput = ''
 }
 
-// Link/Reference Helpers
-const handleLinkSearch = (filter, searchValue) => {
-  filter.searchValue = searchValue
-  
-  // Populate default suggestions when field is created or search is empty
-  if (!searchValue || searchValue.length === 0) {
-    // Provide default suggestions for each field type
-    if (filter.field === 'customer') {
-      filter.suggestions = [
-        { value: 'cust_123', label: 'Acme Corporation', subtitle: 'Enterprise Customer' },
-        { value: 'cust_456', label: 'Tech Solutions Inc', subtitle: 'SMB Customer' },
-        { value: 'cust_789', label: 'Global Industries', subtitle: 'Enterprise Customer' }
-      ]
-    } else if (filter.field === 'project') {
-      filter.suggestions = [
-        { value: 'proj_123', label: 'Website Redesign', subtitle: 'Active Project' },
-        { value: 'proj_456', label: 'Mobile App', subtitle: 'In Progress' },
-        { value: 'proj_789', label: 'API Integration', subtitle: 'Planning' }
-      ]
-    } else if (filter.field === 'owner') {
-      filter.suggestions = [
-        { value: 'user_123', label: 'John Doe', subtitle: 'john.doe@company.com' },
-        { value: 'user_456', label: 'Jane Smith', subtitle: 'jane.smith@company.com' },
-        { value: 'user_789', label: 'Bob Wilson', subtitle: 'bob.wilson@company.com' }
-      ]
-    }
-  } else if (searchValue.length > 0) {
-    // Filter suggestions based on search value
-    if (filter.field === 'customer') {
-      const allSuggestions = [
-        { value: 'cust_123', label: 'Acme Corporation', subtitle: 'Enterprise Customer' },
-        { value: 'cust_456', label: 'Tech Solutions Inc', subtitle: 'SMB Customer' },
-        { value: 'cust_789', label: 'Global Industries', subtitle: 'Enterprise Customer' }
-      ]
-      filter.suggestions = allSuggestions.filter(item => 
-        item.label.toLowerCase().includes(searchValue.toLowerCase()) ||
-        item.subtitle.toLowerCase().includes(searchValue.toLowerCase())
-      )
-    } else if (filter.field === 'project') {
-      const allSuggestions = [
-        { value: 'proj_123', label: 'Website Redesign', subtitle: 'Active Project' },
-        { value: 'proj_456', label: 'Mobile App', subtitle: 'In Progress' },
-        { value: 'proj_789', label: 'API Integration', subtitle: 'Planning' }
-      ]
-      filter.suggestions = allSuggestions.filter(item => 
-        item.label.toLowerCase().includes(searchValue.toLowerCase()) ||
-        item.subtitle.toLowerCase().includes(searchValue.toLowerCase())
-      )
-    } else if (filter.field === 'owner') {
-      const allSuggestions = [
-        { value: 'user_123', label: 'John Doe', subtitle: 'john.doe@company.com' },
-        { value: 'user_456', label: 'Jane Smith', subtitle: 'jane.smith@company.com' },
-        { value: 'user_789', label: 'Bob Wilson', subtitle: 'bob.wilson@company.com' }
-      ]
-      filter.suggestions = allSuggestions.filter(item => 
-        item.label.toLowerCase().includes(searchValue.toLowerCase()) ||
-        item.subtitle.toLowerCase().includes(searchValue.toLowerCase())
-      )
-    }
+// New helper functions for enhanced functionality
+const getDisplayValueForUser = (value, filter) => {
+  if (filter.userDisplayMap && filter.userDisplayMap[value]) {
+    return filter.userDisplayMap[value]
   }
+  return value
 }
 
-const selectLinkValue = (filter, suggestion) => {
-  filter.value = suggestion.value
-  filter.displayValue = suggestion.label
-  filter.searchValue = suggestion.label
-  filter.showSuggestions = false
-  filter.suggestions = []
-}
-
-const clearLinkValue = (filter) => {
-  filter.value = ''
-  filter.displayValue = ''
+const addUserToMultiSelect = (filter, suggestion) => {
+  const currentValues = getSelectedValues(filter.value)
+  if (!currentValues.includes(suggestion.value)) {
+    currentValues.push(suggestion.value)
+    filter.value = currentValues.join(', ')
+    
+    // Store display name mapping
+    if (!filter.userDisplayMap) filter.userDisplayMap = {}
+    filter.userDisplayMap[suggestion.value] = suggestion.label
+  }
   filter.searchValue = ''
   filter.suggestions = []
 }
+
+// Tag search helpers
+let tagSearchTimeouts = {}
+
+const handleTagSearch = async (filter, searchValue) => {
+  filter.loadingTags = true
+  
+  // Clear existing timeout for this filter
+  if (tagSearchTimeouts[filter.id]) {
+    clearTimeout(tagSearchTimeouts[filter.id])
+  }
+  
+  // Debounce search requests
+  tagSearchTimeouts[filter.id] = setTimeout(async () => {
+    try {
+      const response = await fetch('/api/method/force_trans_customization.api.issues.search_tags', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Frappe-CSRF-Token': window.csrf_token || ''
+        },
+        body: JSON.stringify({
+          search_query: searchValue || '',
+          limit: 15
+        })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        filter.tagSuggestions = data.message || []
+      }
+    } catch (error) {
+      console.error('Tag search error:', error)
+      filter.tagSuggestions = []
+    } finally {
+      filter.loadingTags = false
+    }
+  }, 300) // 300ms debounce
+}
+
+const addTagFromInput = (filter) => {
+  if (!filter.tagInput || !filter.tagInput.trim()) return
+  
+  const newTag = filter.tagInput.replace(',', '').trim()
+  const currentTags = getTags(filter.value)
+  
+  if (newTag && !currentTags.includes(newTag)) {
+    currentTags.push(newTag)
+    filter.value = currentTags.join(', ')
+  }
+  
+  filter.tagInput = ''
+  filter.tagSuggestions = []
+}
+
+const addTagFromSuggestion = (filter, tagSuggestion) => {
+  const currentTags = getTags(filter.value)
+  
+  if (!currentTags.includes(tagSuggestion.value)) {
+    currentTags.push(tagSuggestion.value)
+    filter.value = currentTags.join(', ')
+  }
+  
+  filter.tagInput = ''
+  filter.tagSuggestions = []
+}
+
+// Link/Reference Helpers - Updated to use real API endpoints
+let searchTimeouts = {}
+
+const handleLinkSearch = async (filter, searchValue) => {
+  filter.searchValue = searchValue
+  filter.loading = true
+  
+  // Clear existing timeout for this filter
+  if (searchTimeouts[filter.id]) {
+    clearTimeout(searchTimeouts[filter.id])
+  }
+  
+  // Debounce search requests
+  searchTimeouts[filter.id] = setTimeout(async () => {
+    try {
+      let searchResults = []
+      
+      if (filter.field === 'customer') {
+        const response = await fetch('/api/method/force_trans_customization.api.issues.search_customers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Frappe-CSRF-Token': window.csrf_token || ''
+          },
+          body: JSON.stringify({
+            search_query: searchValue || '',
+            limit: 10
+          })
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          searchResults = data.message || []
+        }
+      } else if (filter.field === 'owner' || filter.field === 'custom_users_assigned' || filter.field === 'custom_assigned_csm_team') {
+        const response = await fetch('/api/method/force_trans_customization.api.issues.search_users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Frappe-CSRF-Token': window.csrf_token || ''
+          },
+          body: JSON.stringify({
+            search_query: searchValue || '',
+            limit: 10,
+            doctype_filter: 'User'
+          })
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          searchResults = data.message || []
+        }
+      }
+      
+      filter.suggestions = searchResults
+    } catch (error) {
+      console.error('Search error:', error)
+      filter.suggestions = []
+    } finally {
+      filter.loading = false
+    }
+  }, 300) // 300ms debounce
+}
+
 
 // Frappe UI Helper Functions
 const getOperatorDropdownOptions = (fieldValue, filter) => {
@@ -656,6 +776,10 @@ const getOperatorDropdownOptions = (fieldValue, filter) => {
         filter.searchValue = ''
         filter.displayValue = ''
         filter.tagInput = ''
+        
+        // Clear search suggestions
+        filter.suggestions = []
+        filter.searchOptions = []
       }
       filter.operator = op.value
     }
@@ -715,30 +839,6 @@ const handleMultiSelectChange = (filter, newValue) => {
   filter.multiSelectValue = null
 }
 
-const getLinkComboboxOptions = (filter) => {
-  if (!filter.suggestions || !Array.isArray(filter.suggestions)) {
-    return []
-  }
-  return filter.suggestions.map(suggestion => {
-    if (typeof suggestion === 'string') {
-      return {
-        label: suggestion,
-        value: suggestion
-      }
-    }
-    return {
-      label: suggestion.subtitle ? `${suggestion.label} - ${suggestion.subtitle}` : suggestion.label || suggestion.value,
-      value: suggestion.value || suggestion.label
-    }
-  })
-}
-
-const handleLinkSelection = (filter, selectedValue) => {
-  const suggestion = filter.suggestions?.find(s => s.value === selectedValue)
-  if (suggestion) {
-    selectLinkValue(filter, suggestion)
-  }
-}
 
 const updateDateRange = (filter) => {
   if (filter.startValue && filter.endValue) {
@@ -750,35 +850,25 @@ const updateDateRange = (filter) => {
 
 // Main Functions
 const addFilter = (fieldValue) => {
-  const fieldConfig = availableFields.find(f => f.value === fieldValue)
   const newFilter = {
     id: ++filterIdCounter,
     field: fieldValue,
     operator: getOperatorsForField(fieldValue)[0]?.value || 'equals',
     value: '',
-    isMultiSelect: fieldConfig?.multiSelect || false,
-    // Multi-select specific properties
-    multiSelectValue: null,
     // Date range specific properties
     startValue: '',
     endValue: '',
-    // Link-specific properties
+    // Link-specific properties (all link fields are multiSelect)
     searchValue: '',
     displayValue: '',
     suggestions: [],
     showSuggestions: false,
+    loading: false,
+    userDisplayMap: {},
     // Tags-specific properties
-    tagInput: ''
-  }
-  
-  // Initialize suggestions for link fields
-  if (getFieldType(fieldValue) === 'link') {
-    handleLinkSearch(newFilter, '')
-  }
-  
-  // Initialize multiselect options for combobox select fields
-  if (getFieldType(fieldValue) === 'select' && fieldConfig?.multiSelect) {
-    newFilter.multiSelectOptions = getFieldOptions(fieldValue)
+    tagInput: '',
+    tagSuggestions: [],
+    loadingTags: false
   }
   
   pendingFilters.value.push(newFilter)

@@ -1334,3 +1334,230 @@ def get_filtered_issues_count(suggestion_type, suggestion_value):
     except Exception as e:
         frappe.log_error(f"Error in get_filtered_issues_count: {str(e)}")
         frappe.throw(_("Failed to get filtered issues count: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def search_users(search_query="", limit=10, doctype_filter="User"):
+    """
+    Search users for autocomplete in filters
+    Support searching in User doctype with different filter criteria
+    """
+    try:
+        limit = int(limit)
+        
+        if not search_query or len(search_query.strip()) < 1:
+            return []
+        
+        search_query = search_query.strip()
+        
+        # Base fields to return
+        fields = ["name", "full_name", "email", "enabled"]
+        
+        # Build filters based on doctype_filter
+        filters = {"enabled": 1}  # Only enabled users
+        
+        if doctype_filter == "User":
+            # Search in all users
+            or_filters = [
+                ["name", "like", f"%{search_query}%"],
+                ["full_name", "like", f"%{search_query}%"],
+                ["email", "like", f"%{search_query}%"]
+            ]
+        else:
+            # Default to User doctype
+            or_filters = [
+                ["name", "like", f"%{search_query}%"],
+                ["full_name", "like", f"%{search_query}%"],
+                ["email", "like", f"%{search_query}%"]
+            ]
+        
+        # Get users using frappe.get_list to respect permissions
+        users = frappe.get_list(
+            "User",
+            fields=fields,
+            filters=filters,
+            or_filters=or_filters,
+            order_by="full_name asc",
+            limit_page_length=limit,
+            ignore_permissions=False
+        )
+        
+        # Format results for frontend
+        results = []
+        for user in users:
+            display_name = user.full_name or user.name
+            if user.email and user.email != user.name:
+                display_name += f" ({user.email})"
+            
+            results.append({
+                "value": user.name,
+                "label": display_name,
+                "subtitle": user.email or user.name,
+                "type": "user"
+            })
+        
+        return results
+        
+    except Exception as e:
+        frappe.log_error(f"Error in search_users: {str(e)}")
+        frappe.throw(_("Failed to search users: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def search_customers(search_query="", limit=10):
+    """
+    Search customers for autocomplete in filters
+    """
+    try:
+        limit = int(limit)
+        
+        if not search_query or len(search_query.strip()) < 1:
+            return []
+        
+        search_query = search_query.strip()
+        
+        # Get customers using frappe.get_list to respect permissions
+        or_filters = [
+            ["name", "like", f"%{search_query}%"],
+            ["customer_name", "like", f"%{search_query}%"]
+        ]
+        
+        customers = frappe.get_list(
+            "Customer",
+            fields=["name", "customer_name", "customer_group", "territory"],
+            or_filters=or_filters,
+            order_by="customer_name asc",
+            limit_page_length=limit,
+            ignore_permissions=False
+        )
+        
+        # Format results for frontend
+        results = []
+        for customer in customers:
+            display_name = customer.customer_name or customer.name
+            subtitle = f"{customer.customer_group or ''} • {customer.territory or ''}".strip(" •")
+            
+            results.append({
+                "value": customer.name,
+                "label": display_name,
+                "subtitle": subtitle if subtitle else customer.name,
+                "type": "customer"
+            })
+        
+        return results
+        
+    except Exception as e:
+        frappe.log_error(f"Error in search_customers: {str(e)}")
+        frappe.throw(_("Failed to search customers: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def search_tags(search_query="", limit=15):
+    """
+    Search tags for autocomplete in filters
+    Returns both existing tags from Tag doctype and tags currently used in issues
+    """
+    try:
+        limit = int(limit)
+        
+        if not search_query or len(search_query.strip()) < 1:
+            # If no search query, return most frequently used tags in issues
+            tag_links = frappe.db.get_all(
+                "Tag Link",
+                filters={"document_type": "Issue"},
+                fields=["tag", "count(name) as usage_count"],
+                group_by="tag",
+                order_by="usage_count desc",
+                limit=limit
+            )
+            
+            results = []
+            for tag_link in tag_links:
+                # Get tag color if available
+                try:
+                    tag_doc = frappe.get_doc("Tag", tag_link.tag)
+                    tag_color = getattr(tag_doc, 'tag_color', None) or '#gray'
+                except:
+                    tag_color = '#gray'
+                
+                results.append({
+                    "value": tag_link.tag,
+                    "label": tag_link.tag,
+                    "subtitle": f"Used in {tag_link.usage_count} issue(s)",
+                    "type": "tag",
+                    "color": tag_color
+                })
+            
+            return results
+        
+        search_query = search_query.strip()
+        
+        # Search in existing tags first
+        tag_results = []
+        try:
+            tags = frappe.get_list(
+                "Tag",
+                fields=["name", "tag_color"],
+                filters=[["name", "like", f"%{search_query}%"]],
+                order_by="name asc",
+                limit_page_length=limit,
+                ignore_permissions=False
+            )
+            
+            for tag in tags:
+                # Check if this tag is used in issues
+                usage_count = frappe.db.count(
+                    "Tag Link",
+                    filters={"document_type": "Issue", "tag": tag.name}
+                )
+                
+                tag_results.append({
+                    "value": tag.name,
+                    "label": tag.name,
+                    "subtitle": f"Used in {usage_count} issue(s)" if usage_count > 0 else "Available tag",
+                    "type": "tag",
+                    "color": tag.tag_color or '#gray'
+                })
+        except:
+            # If Tag doctype doesn't exist or has issues, continue with tag links search
+            pass
+        
+        # Also search in tag links for tags actually used in issues
+        if len(tag_results) < limit:
+            remaining_limit = limit - len(tag_results)
+            existing_tag_names = [tag["value"] for tag in tag_results]
+            
+            tag_links = frappe.db.get_all(
+                "Tag Link",
+                filters={
+                    "document_type": "Issue",
+                    "tag": ["like", f"%{search_query}%"]
+                },
+                fields=["tag", "count(name) as usage_count"],
+                group_by="tag",
+                order_by="usage_count desc",
+                limit=remaining_limit * 2  # Get extra in case of duplicates
+            )
+            
+            for tag_link in tag_links:
+                if tag_link.tag not in existing_tag_names and len(tag_results) < limit:
+                    # Try to get tag color
+                    try:
+                        tag_doc = frappe.get_doc("Tag", tag_link.tag)
+                        tag_color = getattr(tag_doc, 'tag_color', None) or '#gray'
+                    except:
+                        tag_color = '#gray'
+                    
+                    tag_results.append({
+                        "value": tag_link.tag,
+                        "label": tag_link.tag,
+                        "subtitle": f"Used in {tag_link.usage_count} issue(s)",
+                        "type": "tag",
+                        "color": tag_color
+                    })
+        
+        return tag_results[:limit]
+        
+    except Exception as e:
+        frappe.log_error(f"Error in search_tags: {str(e)}")
+        frappe.throw(_("Failed to search tags: {0}").format(str(e)))
