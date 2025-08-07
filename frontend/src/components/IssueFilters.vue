@@ -409,24 +409,23 @@ let filterIdCounter = 0
 // Loading state for better UX
 const isApplyingFilters = ref(false)
 
-// Enhanced Field Configuration with Types
+// Enhanced Field Configuration with Types - Only specified fields
 const availableFields = [
   { value: 'subject', label: 'Subject', type: 'text' },
-  { value: 'description', label: 'Description', type: 'text' },
   { value: 'status', label: 'Status', type: 'select' },
-  { value: 'priority', label: 'Priority', type: 'select' },
-  { value: 'issue_type', label: 'Issue Type', type: 'select' },
   { value: 'raised_by', label: 'Raised By', type: 'email' },
-  { value: 'owner', label: 'Owner', type: 'link' },
+  { value: 'description', label: 'Description', type: 'text' },
   { value: 'customer', label: 'Customer', type: 'link' },
+  { value: 'contact', label: 'Contact', type: 'link' },
+  { value: 'lead', label: 'Lead', type: 'link' },
+  { value: 'custom_assigned_csm_team', label: 'Assigned CSM Team', type: 'link' },
+  { value: 'custom_users_assigned', label: 'User Assigned', type: 'link' },
   { value: 'creation', label: 'Created Date', type: 'datetime' },
   { value: 'modified', label: 'Modified Date', type: 'datetime' },
-  { value: 'custom_users_assigned', label: 'Users Assigned', type: 'link' },
-  { value: 'custom_assigned_csm_team', label: 'CSM Team', type: 'link' },
   { value: '_user_tags', label: 'Tags', type: 'tags' },
 ]
 
-// Field Options Data
+// Field Options Data - Only for select type fields
 const fieldOptions = {
   status: [
     { value: 'open', label: 'Open' },
@@ -434,28 +433,6 @@ const fieldOptions = {
     { value: 'resolved', label: 'Resolved' },
     { value: 'closed', label: 'Closed' },
     { value: 'cancelled', label: 'Cancelled' }
-  ],
-  priority: [
-    { value: 'low', label: 'Low' },
-    { value: 'medium', label: 'Medium' },
-    { value: 'high', label: 'High' },
-    { value: 'urgent', label: 'Urgent' }
-  ],
-  issue_type: [
-    { value: 'bug', label: 'Bug' },
-    { value: 'feature', label: 'Feature Request' },
-    { value: 'support', label: 'Support' },
-    { value: 'question', label: 'Question' }
-  ],
-  custom_users_assigned: [
-    { value: 'john.doe@company.com', label: 'John Doe' },
-    { value: 'jane.smith@company.com', label: 'Jane Smith' },
-    { value: 'bob.wilson@company.com', label: 'Bob Wilson' }
-  ],
-  custom_assigned_csm_team: [
-    { value: 'team_a', label: 'Team A - Enterprise' },
-    { value: 'team_b', label: 'Team B - SMB' },
-    { value: 'team_c', label: 'Team C - Support' }
   ]
 }
 
@@ -532,8 +509,11 @@ const getFieldPlaceholder = (fieldValue) => {
     subject: 'Enter issue title...',
     description: 'Enter description...',
     raised_by: 'Enter email address...',
-    owner: 'Search for owner...',
     customer: 'Search for customer...',
+    contact: 'Search for contact...',
+    lead: 'Search for lead...',
+    custom_assigned_csm_team: 'Search for CSM team...',
+    custom_users_assigned: 'Search for users...',
     creation: 'Select date and time',
     modified: 'Select date and time'
   }
@@ -712,26 +692,23 @@ const handleLinkSearch = async (filter, searchValue) => {
   searchTimeouts[filter.id] = setTimeout(async () => {
     try {
       let searchResults = []
+      let endpoint = ''
       
+      // Determine which endpoint to use based on field type
       if (filter.field === 'customer') {
-        const response = await fetch('/api/method/force_trans_customization.api.issues.search_customers', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Frappe-CSRF-Token': window.csrf_token || ''
-          },
-          body: JSON.stringify({
-            search_query: searchValue || '',
-            limit: 10
-          })
-        })
-        
-        if (response.ok) {
-          const data = await response.json()
-          searchResults = data.message || []
-        }
-      } else if (filter.field === 'owner' || filter.field === 'custom_users_assigned' || filter.field === 'custom_assigned_csm_team') {
-        const response = await fetch('/api/method/force_trans_customization.api.issues.search_users', {
+        endpoint = '/api/method/force_trans_customization.api.issues.search_customers'
+      } else if (filter.field === 'contact') {
+        endpoint = '/api/method/force_trans_customization.api.issues.search_contacts'
+      } else if (filter.field === 'lead') {
+        endpoint = '/api/method/force_trans_customization.api.issues.search_leads'
+      } else if (filter.field === 'custom_assigned_csm_team') {
+        endpoint = '/api/method/force_trans_customization.api.issues.search_user_groups'
+      } else if (filter.field === 'custom_users_assigned') {
+        endpoint = '/api/method/force_trans_customization.api.issues.search_users'
+      }
+      
+      if (endpoint) {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -740,7 +717,7 @@ const handleLinkSearch = async (filter, searchValue) => {
           body: JSON.stringify({
             search_query: searchValue || '',
             limit: 10,
-            doctype_filter: 'User'
+            doctype_filter: filter.field === 'custom_users_assigned' ? 'User' : undefined
           })
         })
         

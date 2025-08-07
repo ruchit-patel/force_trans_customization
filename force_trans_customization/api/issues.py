@@ -22,7 +22,8 @@ def process_filter_list(filters):
         field = filter_obj.get('field')
         operator = filter_obj.get('operator')
         value = filter_obj.get('value')
-        
+        print("-------------------------")
+        print(field,operator,value)
         if not field or not operator or value is None or value == '':
             continue
             
@@ -276,7 +277,6 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
         elif isinstance(filters, str):
             import json
             filters = json.loads(filters)
-        
         # Base fields to fetch from Issue doctype
         fields = [
             "name",
@@ -857,6 +857,12 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                 if len(issue_names_from_tags) == 0:
                     return []  # No issues match tag filters
                 combined_filters['name'] = ['in', issue_names_from_tags]
+
+
+            print("-------------------------------------------")
+            print(combined_filters)
+            print(additional_or_filters)
+            print("-------------------------------------------")
             
             if additional_or_filters:
                 issues = frappe.get_list(
@@ -1449,6 +1455,168 @@ def search_customers(search_query="", limit=10):
     except Exception as e:
         frappe.log_error(f"Error in search_customers: {str(e)}")
         frappe.throw(_("Failed to search customers: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def search_user_groups(search_query="", limit=10):
+    """
+    Search User Groups for CSM Team autocomplete in filters
+    """
+    try:
+        limit = int(limit)
+        
+        if not search_query or len(search_query.strip()) < 1:
+            return []
+        
+        search_query = search_query.strip()
+        
+        # Get user groups using frappe.get_list to respect permissions
+        or_filters = [
+            ["name", "like", f"%{search_query}%"]
+        ]
+        
+        user_groups = frappe.get_list(
+            "User Group",
+            fields=["name"],
+            or_filters=or_filters,
+            order_by="name asc",
+            limit_page_length=limit,
+            ignore_permissions=False
+        )
+        
+        # Format results for frontend
+        results = []
+        for group in user_groups:
+            # Get member count for display
+            member_count = frappe.db.count(
+                "User Group Member",
+                filters={"parent": group.name}
+            )
+            
+            results.append({
+                "value": group.name,
+                "label": group.name,
+                "subtitle": f"{member_count} member(s)" if member_count > 0 else "Empty group",
+                "type": "user_group"
+            })
+        
+        return results
+        
+    except Exception as e:
+        frappe.log_error(f"Error in search_user_groups: {str(e)}")
+        frappe.throw(_("Failed to search user groups: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def search_contacts(search_query="", limit=10):
+    """
+    Search contacts for autocomplete in filters
+    """
+    try:
+        limit = int(limit)
+        
+        if not search_query or len(search_query.strip()) < 1:
+            return []
+        
+        search_query = search_query.strip()
+        
+        # Get contacts using frappe.get_list to respect permissions
+        or_filters = [
+            ["name", "like", f"%{search_query}%"],
+            ["first_name", "like", f"%{search_query}%"],
+            ["last_name", "like", f"%{search_query}%"],
+            ["email_id", "like", f"%{search_query}%"]
+        ]
+        
+        contacts = frappe.get_list(
+            "Contact",
+            fields=["name", "first_name", "last_name", "email_id", "company_name"],
+            or_filters=or_filters,
+            order_by="first_name asc",
+            limit_page_length=limit,
+            ignore_permissions=False
+        )
+        
+        # Format results for frontend
+        results = []
+        for contact in contacts:
+            display_name = f"{contact.first_name or ''} {contact.last_name or ''}".strip()
+            if not display_name:
+                display_name = contact.name
+            
+            subtitle = contact.email_id or contact.company_name or contact.name
+            
+            results.append({
+                "value": contact.name,
+                "label": display_name,
+                "subtitle": subtitle,
+                "type": "contact"
+            })
+        
+        return results
+        
+    except Exception as e:
+        frappe.log_error(f"Error in search_contacts: {str(e)}")
+        frappe.throw(_("Failed to search contacts: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def search_leads(search_query="", limit=10):
+    """
+    Search leads for autocomplete in filters
+    """
+    try:
+        limit = int(limit)
+        
+        if not search_query or len(search_query.strip()) < 1:
+            return []
+        
+        search_query = search_query.strip()
+        
+        # Get leads using frappe.get_list to respect permissions
+        or_filters = [
+            ["name", "like", f"%{search_query}%"],
+            ["lead_name", "like", f"%{search_query}%"],
+            ["email_id", "like", f"%{search_query}%"],
+            ["company_name", "like", f"%{search_query}%"]
+        ]
+        
+        leads = frappe.get_list(
+            "Lead",
+            fields=["name", "lead_name", "email_id", "company_name", "status"],
+            or_filters=or_filters,
+            order_by="lead_name asc",
+            limit_page_length=limit,
+            ignore_permissions=False
+        )
+        
+        # Format results for frontend
+        results = []
+        for lead in leads:
+            display_name = lead.lead_name or lead.name
+            subtitle_parts = []
+            
+            if lead.email_id:
+                subtitle_parts.append(lead.email_id)
+            if lead.company_name:
+                subtitle_parts.append(lead.company_name)
+            if lead.status:
+                subtitle_parts.append(f"Status: {lead.status}")
+            
+            subtitle = " • ".join(subtitle_parts) if subtitle_parts else lead.name
+            
+            results.append({
+                "value": lead.name,
+                "label": display_name,
+                "subtitle": subtitle,
+                "type": "lead"
+            })
+        
+        return results
+        
+    except Exception as e:
+        frappe.log_error(f"Error in search_leads: {str(e)}")
+        frappe.throw(_("Failed to search leads: {0}").format(str(e)))
 
 
 @frappe.whitelist()
