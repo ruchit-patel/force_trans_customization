@@ -32,7 +32,14 @@ def process_filter_list(filters):
         
         # Handle different operators
         if operator == 'equals':
-            processed_filters[field] = processed_value
+            # Special handling for date fields - convert to between operator for exact date match
+            if field in ['creation', 'modified'] and isinstance(processed_value, str) and len(processed_value) == 10:
+                # For date equals, convert to between start and end of day
+                start_datetime = f"{processed_value} 00:00:00"
+                end_datetime = f"{processed_value} 23:59:59"
+                processed_filters[field] = ['between', [start_datetime, end_datetime]]
+            else:
+                processed_filters[field] = processed_value
         elif operator == 'not_equals':
             processed_filters[field] = ['!=', processed_value]
         elif operator == 'like' or operator == 'contains':
@@ -96,34 +103,40 @@ def convert_filter_value(field, value, operator):
     """
     # Field type mapping
     field_types = {
-        'creation': 'datetime',
-        'modified': 'datetime',
-        'priority': 'select',
+        'creation': 'date',
+        'modified': 'date',
         'status': 'select',
-        'issue_type': 'select',
         'subject': 'text',
         'description': 'text',
         'raised_by': 'email',
         'customer': 'link',
-        'project': 'link',
-        'owner': 'link',
+        'contact': 'link',
+        'lead': 'link',
+        'custom_assigned_csm_team': 'link',
+        'custom_users_assigned': 'link',
         '_user_tags': 'tags'
     }
     
     field_type = field_types.get(field, 'text')
     
     # Convert based on field type
-    if field_type in ['datetime', 'date']:
-        # Handle datetime conversion
+    if field_type == 'date':
+        # Handle date conversion - convert date to proper format for frappe filtering
         if isinstance(value, str) and value:
             try:
-                # Try parsing different datetime formats
-                if 'T' in value:  # ISO format
-                    return value
-                elif '-' in value and ' ' in value:  # YYYY-MM-DD HH:MM:SS
-                    return value
-                elif '-' in value:  # YYYY-MM-DD
-                    return value
+                # Input format: YYYY-MM-DD (from date input)
+                if '-' in value and len(value) == 10:  # YYYY-MM-DD format
+                    if operator in ['greater_than', 'greater_than_equal', '>', '>=']:
+                        # For "after" dates, add time 00:00:00 to include the whole day
+                        return f"{value} 00:00:00"
+                    elif operator in ['less_than', 'less_than_equal', '<', '<=']:
+                        # For "before" dates, add time 23:59:59 to include the whole day
+                        return f"{value} 23:59:59"
+                    elif operator == 'equals':
+                        # For exact date match, we need to use between operator
+                        return value
+                    else:
+                        return value
                 else:
                     return value
             except:
@@ -270,7 +283,8 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
         # Convert string parameters to integers
         limit_page_length = int(limit_page_length)
         limit_start = int(limit_start)
-        
+        print("-------------[Filter]------------------")
+        print(filters)
         # Handle filters
         if filters is None:
             filters = []

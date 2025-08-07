@@ -420,8 +420,8 @@ const availableFields = [
   { value: 'lead', label: 'Lead', type: 'link' },
   { value: 'custom_assigned_csm_team', label: 'Assigned CSM Team', type: 'link' },
   { value: 'custom_users_assigned', label: 'User Assigned', type: 'link' },
-  { value: 'creation', label: 'Created Date', type: 'datetime' },
-  { value: 'modified', label: 'Modified Date', type: 'datetime' },
+  { value: 'creation', label: 'Created Date', type: 'date' },
+  { value: 'modified', label: 'Modified Date', type: 'date' },
   { value: '_user_tags', label: 'Tags', type: 'tags' },
 ]
 
@@ -514,8 +514,8 @@ const getFieldPlaceholder = (fieldValue) => {
     lead: 'Search for lead...',
     custom_assigned_csm_team: 'Search for CSM team...',
     custom_users_assigned: 'Search for users...',
-    creation: 'Select date and time',
-    modified: 'Select date and time'
+    creation: 'Select date',
+    modified: 'Select date'
   }
   return placeholders[fieldValue] || `Enter ${getFieldLabel(fieldValue).toLowerCase()}...`
 }
