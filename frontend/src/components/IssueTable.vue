@@ -53,12 +53,22 @@
 									{{ formatIssueId(item) }}
 								</a>
 
-								<!-- Title with description -->
+								<!-- Title with description and communication indicator -->
 								<div v-else-if="column.key === 'subject'" class="max-w-xs">
-									<div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}</div>
-									<div v-if="issue.description" class="text-gray-500 text-sm mt-1 truncate"
-										:title="issue.description">
-										{{ stripHtml(issue.description) }}
+									<div 
+										class="cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
+										@mouseenter="showCommunicationPopupFn($event, issue)"
+										@mouseleave="hideCommunicationPopup">
+										<div class="flex items-center gap-2">
+											<div class="flex-1">
+												<div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}</div>
+												<div v-if="issue.description" class="text-gray-500 text-sm mt-1 truncate"
+													:title="issue.description">
+													{{ stripHtml(issue.description) }}
+												</div>
+											</div>
+											
+										</div>
 									</div>
 								</div>
 
@@ -174,6 +184,41 @@
 						class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border">
 						{{ tag }}
 					</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Communication Popup -->
+		<div v-if="showCommunicationPopup && communicationPopupData"
+			class="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-4 min-w-80 max-w-md" :style="{
+				left: communicationPopupPosition.x + 'px',
+				top: communicationPopupPosition.y + 'px',
+				transform: 'translateX(-50%) translateY(-100%)'
+			}">
+			<div class="text-sm">
+				<div class="flex items-center justify-between mb-3">
+					<div class="font-semibold text-gray-900 flex items-center gap-2">
+						<FeatherIcon name="mail" class="h-4 w-4 text-gray-600" />
+						{{ communicationPopupData.subject }}
+					</div>
+					<Badge
+						:label="communicationPopupData.sent_or_received"
+						:theme="getCommunicationStatusTheme(communicationPopupData.sent_or_received)"
+						variant="subtle"
+						size="sm"
+					/>
+				</div>
+				
+				<div v-if="communicationPopupData.content" class="mb-2">
+					<div class="text-gray-700 text-sm leading-relaxed max-h-32 overflow-y-auto">
+						Last Communication : {{ stripHtml(communicationPopupData.content) }}
+					</div>
+				</div>
+				
+				
+				
+				<div class="text-xs text-gray-400 mt-3 text-center">
+					{{ formatDateTime(communicationPopupData.creation) }}
 				</div>
 			</div>
 		</div>
@@ -310,6 +355,11 @@ export default {
 		const tagsPopupPosition = ref({ x: 0, y: 0 })
 		const tagsPopupData = ref(null)
 
+		// Communication popup state management
+		const showCommunicationPopup = ref(false)
+		const communicationPopupPosition = ref({ x: 0, y: 0 })
+		const communicationPopupData = ref(null)
+
 		// Helper methods
 		const getInitials = (name) => {
 			if (!name || typeof name !== "string") {
@@ -355,12 +405,16 @@ export default {
 			return match ? match[1] : issueId
 		}
 
+
 		const stripHtml = (html) => {
-			if (!html) return ""
-			const tmp = document.createElement("div")
-			tmp.innerHTML = html
-			return tmp.textContent || tmp.innerText || ""
+			if (!html) return "";
+			const tmp = document.createElement("div");
+			tmp.innerHTML = html;
+
+			const firstP = tmp.querySelector("p");
+			return firstP ? firstP.textContent.trim() : "";
 		}
+
 
 		const formatDate = (dateString) => {
 			if (!dateString) return "-"
@@ -641,6 +695,24 @@ export default {
 			tagsPopupData.value = null
 		}
 
+		// Communication popup functions
+		const showCommunicationPopupFn = (event, issue) => {
+			if (!issue.latest_communication) return
+
+			const rect = event.currentTarget.getBoundingClientRect()
+			communicationPopupPosition.value = {
+				x: rect.left + rect.width / 2,
+				y: rect.top - 10,
+			}
+			communicationPopupData.value = issue.latest_communication
+			showCommunicationPopup.value = true
+		}
+
+		const hideCommunicationPopup = () => {
+			showCommunicationPopup.value = false
+			communicationPopupData.value = null
+		}
+
 		// Sorting functionality
 		const handleColumnSort = (field) => {
 			let newDirection = "asc"
@@ -722,6 +794,29 @@ export default {
 			return style
 		}
 
+		// Get communication status theme for Frappe UI Badge
+		const getCommunicationStatusTheme = (status) => {
+			if (status === 'Sent') {
+				return 'blue'
+			} else if (status === 'Received') {
+				return 'green'
+			}
+			return 'gray'
+		}
+
+		// Format date and time together
+		const formatDateTime = (dateString) => {
+			if (!dateString) return "-"
+			const date = new Date(dateString)
+			return date.toLocaleString("en-US", {
+				year: "numeric",
+				month: "short",
+				day: "numeric",
+				hour: "2-digit",
+				minute: "2-digit",
+			})
+		}
+
 		return {
 			columns,
 			listOptions,
@@ -748,12 +843,28 @@ export default {
 			getSortIconClass,
 			getSortButtonClass,
 			getTagStyle,
+			getCommunicationStatusTheme,
+			formatDateTime,
 			showTagsPopup,
 			tagsPopupPosition,
 			tagsPopupData,
 			showTagsPopupFn,
 			hideTagsPopupFn,
+			showCommunicationPopup,
+			communicationPopupPosition,
+			communicationPopupData,
+			showCommunicationPopupFn,
+			hideCommunicationPopup,
 		}
 	},
 }
 </script>
+
+<style scoped>
+.line-clamp-2 {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+</style>

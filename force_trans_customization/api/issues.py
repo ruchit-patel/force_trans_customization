@@ -196,6 +196,57 @@ def process_filter_list(filters):
     return processed_filters, or_filters
 
 
+def get_latest_communications(issue_names):
+    """
+    Get the latest email communication for each issue
+    Returns dict with issue_name as key and communication data as value
+    """
+    if not issue_names:
+        return {}
+    
+    try:
+        # Get the latest communication for each issue in a single query
+        communications = frappe.db.sql("""
+            SELECT 
+                reference_name,
+                subject,
+                content,
+                sent_or_received,
+                creation,
+                sender,
+                recipients
+            FROM `tabCommunication`
+            WHERE 
+                reference_doctype = 'Issue'
+                AND reference_name IN %s
+                AND communication_type = 'Communication'
+                AND content IS NOT NULL
+                AND content != ''
+            ORDER BY reference_name, creation DESC
+        """, [issue_names], as_dict=True)
+        
+        # Group by issue and get the latest communication for each
+        latest_communications = {}
+        for comm in communications:
+            issue_name = comm.reference_name
+            if issue_name not in latest_communications:
+                # This is the latest communication for this issue (due to ORDER BY creation DESC)
+                latest_communications[issue_name] = {
+                    'subject': comm.subject,
+                    'content': comm.content[:500] if comm.content else '',  # Limit content length
+                    'sent_or_received': comm.sent_or_received,
+                    'creation': comm.creation,
+                    'sender': comm.sender,
+                    'recipients': comm.recipients
+                }
+        
+        return latest_communications
+        
+    except Exception as e:
+        frappe.log_error(f"Error fetching communications: {str(e)}")
+        return {}
+
+
 def convert_filter_value(field, value, operator):
     """
     Convert filter values to appropriate types based on field type
@@ -584,7 +635,8 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             "creation",
             "modified",
             "owner",
-            "description"
+            "description",
+            "communications"
         ]
         
         # Process new filter structure from frontend
@@ -650,6 +702,10 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             )
         
         
+        # Get latest communications for all issues in batch
+        issue_names = [issue.name for issue in issues]
+        latest_communications = get_latest_communications(issue_names)
+        
         # For each issue, fetch the custom_users_assigned child table data and tags
         for issue in issues:
             # Get child table data for custom_users_assigned
@@ -675,6 +731,9 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             
             # Convert tags to a simple list of tag names
             issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
+            
+            # Add latest communication data
+            issue["latest_communication"] = latest_communications.get(issue.name)
         
         return issues
         
@@ -760,7 +819,8 @@ def get_single_issue_with_assignments(issue_name):
             "creation",
             "modified",
             "owner",
-            "description"
+            "description",
+            "communications",
         ]
         
         # Get the single issue
@@ -979,6 +1039,10 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
                 ignore_permissions=False
             )
             
+            # Get latest communications for all issues in batch
+            issue_names = [issue.name for issue in issues]
+            latest_communications = get_latest_communications(issue_names)
+            
             # Add child table data and tags for each issue
             for issue in issues:
                 # Get child table data for custom_users_assigned
@@ -1001,6 +1065,9 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
                     order_by="creation asc"
                 )
                 issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
+                
+                # Add latest communication data
+                issue["latest_communication"] = latest_communications.get(issue.name)
             
             return issues
         
@@ -1193,7 +1260,8 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             "creation",
             "modified",
             "owner",
-            "description"
+            "description",
+            "communications",
         ]
         
         # Combine all issue name restrictions
@@ -1403,6 +1471,10 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                 ignore_permissions=False
             )
         
+        # Get latest communications for all issues in batch
+        issue_names = [issue.name for issue in issues]
+        latest_communications = get_latest_communications(issue_names)
+        
         # Add child table data and tags for each issue
         for issue in issues:
             # Get child table data for custom_users_assigned
@@ -1425,6 +1497,9 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                 order_by="creation asc"
             )
             issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
+            
+            # Add latest communication data
+            issue["latest_communication"] = latest_communications.get(issue.name)
         
         return issues
         
