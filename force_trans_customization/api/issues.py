@@ -9,26 +9,34 @@ def process_filter_list(filters):
     Process the new filter list structure from frontend
     Converts filter objects to frappe.get_list compatible format
     """
+    print("🔧 PROCESSING FILTER LIST:")
     processed_filters = {}
     or_filters = []
     
     if not filters or not isinstance(filters, list):
+        print("❌ No filters provided or invalid format")
         return processed_filters, or_filters
     
-    for filter_obj in filters:
+    print(f"📝 Processing {len(filters)} filter(s):")
+    
+    for i, filter_obj in enumerate(filters):
         if not isinstance(filter_obj, dict):
+            print(f"   ❌ Filter {i+1}: Invalid format (not dict)")
             continue
             
         field = filter_obj.get('field')
         operator = filter_obj.get('operator')
         value = filter_obj.get('value')
-        print("-------------------------")
-        print(field,operator,value)
+        
+        print(f"   🔍 Filter {i+1}: field='{field}', operator='{operator}', value='{value}'")
+        
         if not field or not operator or value is None or value == '':
+            print(f"   ❌ Filter {i+1}: Skipped (missing field/operator/value)")
             continue
             
         # Convert string values to appropriate types
         processed_value = convert_filter_value(field, value, operator)
+        print(f"   ✅ Filter {i+1}: Processed value='{processed_value}'")
         
         # Handle different operators
         if operator == 'equals':
@@ -38,10 +46,13 @@ def process_filter_list(filters):
                 start_datetime = f"{processed_value} 00:00:00"
                 end_datetime = f"{processed_value} 23:59:59"
                 processed_filters[field] = ['between', [start_datetime, end_datetime]]
+                print(f"   📅 Filter {i+1}: Date equals converted → {field} between [{start_datetime}, {end_datetime}]")
             else:
                 processed_filters[field] = processed_value
+                print(f"   ✅ Filter {i+1}: Applied equals → {field} = {processed_value}")
         elif operator == 'not_equals':
             processed_filters[field] = ['!=', processed_value]
+            print(f"   🚫 Filter {i+1}: Applied not equals → {field} != {processed_value}")
         elif operator == 'like' or operator == 'contains':
             if field == 'subject':
                 # Special handling for subject - search in both subject and description
@@ -49,8 +60,10 @@ def process_filter_list(filters):
                     ['subject', 'like', f'%{processed_value}%'],
                     ['description', 'like', f'%{processed_value}%']
                 ])
+                print(f"   🔍 Filter {i+1}: Subject search added to OR filters → subject LIKE '%{processed_value}%' OR description LIKE '%{processed_value}%'")
             else:
                 processed_filters[field] = ['like', f'%{processed_value}%']
+                print(f"   🔍 Filter {i+1}: Applied like → {field} LIKE '%{processed_value}%'")
         elif operator == 'starts_with':
             processed_filters[field] = ['like', f'{processed_value}%']
         elif operator == 'ends_with':
@@ -71,6 +84,7 @@ def process_filter_list(filters):
                 values = processed_value if isinstance(processed_value, list) else [processed_value]
             if values:
                 processed_filters[field] = ['in', values]
+                print(f"   📋 Filter {i+1}: Applied IN → {field} IN {values}")
         elif operator == 'not_in':
             if isinstance(processed_value, str):
                 values = [v.strip() for v in processed_value.split(',') if v.strip()]
@@ -78,6 +92,7 @@ def process_filter_list(filters):
                 values = processed_value if isinstance(processed_value, list) else [processed_value]
             if values:
                 processed_filters[field] = ['not in', values]
+                print(f"   🚫📋 Filter {i+1}: Applied NOT IN → {field} NOT IN {values}")
         elif operator == 'between':
             # Handle date/datetime ranges - value should be "start,end"
             if isinstance(processed_value, str) and ',' in processed_value:
@@ -93,6 +108,12 @@ def process_filter_list(filters):
         else:
             # Default to equals
             processed_filters[field] = processed_value
+            print(f"   📝 Filter {i+1}: Applied as equals → {field} = {processed_value}")
+    
+    print(f"🎯 FILTER PROCESSING COMPLETE:")
+    print(f"   📊 Processed Filters: {processed_filters}")
+    print(f"   🔀 OR Filters: {or_filters}")
+    print("-"*40)
     
     return processed_filters, or_filters
 
@@ -188,8 +209,8 @@ def get_issues_by_tag_filters(tag_filters):
         
         issue_names = set()
         
-        if operator == 'has' or operator == 'has_any':
-            # Issues that have ANY of the specified tags
+        if operator == 'has':
+            # Issues that have ANY of the specified tags (A OR B OR C)
             tag_links = frappe.db.get_all(
                 "Tag Link",
                 filters={
@@ -283,14 +304,24 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
         # Convert string parameters to integers
         limit_page_length = int(limit_page_length)
         limit_start = int(limit_start)
-        print("-------------[Filter]------------------")
-        print(filters)
+        
+        print("="*80)
+        print("🔍 ISSUE FILTER DEBUG - get_issues_with_assignments")
+        print("="*80)
+        print(f"📥 Input Filters (Raw): {filters}")
+        print(f"📊 Pagination: limit={limit_page_length}, start={limit_start}")
+        print(f"📋 Order By: {order_by}")
+        print("-"*80)
+        
         # Handle filters
         if filters is None:
             filters = []
         elif isinstance(filters, str):
             import json
             filters = json.loads(filters)
+            
+        print(f"📥 Parsed Filters: {filters}")
+        print("-"*40)
         # Base fields to fetch from Issue doctype
         fields = [
             "name",
@@ -309,23 +340,39 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
         
         # Process new filter structure from frontend
         processed_filters, or_filters = process_filter_list(filters)
+        print(f"🔧 Processed Filters: {processed_filters}")
+        print(f"🔀 OR Filters: {or_filters}")
         
         # Handle tag filters separately (since tags are in Tag Link table)
         tag_filters = get_tag_filters(filters)
+        print(f"🏷️  Tag Filters: {tag_filters}")
         issue_names_from_tags = None
         
         if tag_filters:
             issue_names_from_tags = get_issues_by_tag_filters(tag_filters)
+            print(f"🎯 Issues from Tag Filters: {issue_names_from_tags}")
             if issue_names_from_tags is not None:
                 if len(issue_names_from_tags) == 0:
-                    # No issues match tag filters
+                    print("❌ No issues match tag filters - returning empty result")
                     return []
                 else:
                     # Add name filter to restrict to issues matching tags
                     processed_filters['name'] = ['in', issue_names_from_tags]
+                    print(f"✅ Added name filter for tag results: {len(issue_names_from_tags)} issues")
         
         # Get issues using frappe.get_list with enhanced filter handling
+        print("-"*40)
+        print("🗄️  FINAL FRAPPE QUERY:")
+        print(f"   📋 Doctype: Issue")
+        print(f"   📊 Fields: {fields}")
+        print(f"   🔍 Filters: {processed_filters}")
+        print(f"   🔀 OR Filters: {or_filters}")
+        print(f"   📈 Order By: {order_by}")
+        print(f"   📄 Pagination: {limit_page_length} items from {limit_start}")
+        print("-"*40)
+        
         if or_filters:
+            print("🔄 Executing query WITH OR filters...")
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
@@ -336,6 +383,7 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
                 limit_start=limit_start
             )
         else:
+            print("🔄 Executing query WITHOUT OR filters...")
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
@@ -344,6 +392,11 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
                 limit_page_length=limit_page_length,
                 limit_start=limit_start
             )
+        
+        print(f"✅ Query Result: Found {len(issues)} issues")
+        if issues:
+            print(f"📄 First issue: {issues[0].get('name')} - {issues[0].get('subject')}")
+        print("-"*40)
         
         # For each issue, fetch the custom_users_assigned child table data and tags
         for issue in issues:

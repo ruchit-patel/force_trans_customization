@@ -112,7 +112,7 @@
                   </div>
 
                   <!-- Operator -->
-                  <div class="col-span-2">
+                  <div class="col-span-2 flex items-center">
                     <Dropdown 
                       :options="getOperatorDropdownOptions(filter.field, filter)"
                       :placement="'left'"
@@ -457,10 +457,10 @@ const operatorsByType = {
     { value: 'not_in', label: 'Not In' }
   ],
   link: [
+    { value: 'in', label: 'In' },
     { value: 'equals', label: 'Is' },
     { value: 'not_equals', label: 'Is Not' },
     { value: 'like', label: 'Contains' },
-    { value: 'in', label: 'In' },
     { value: 'not_in', label: 'Not In' }
   ],
   datetime: [
@@ -478,7 +478,6 @@ const operatorsByType = {
   tags: [
     { value: 'has', label: 'Has Tag' },
     { value: 'has_all', label: 'Has All Tags' },
-    { value: 'has_any', label: 'Has Any Tag' },
     { value: 'not_has', label: 'Does Not Have' }
   ]
 }
@@ -744,17 +743,32 @@ const getOperatorDropdownOptions = (fieldValue, filter) => {
   return operators.map(op => ({
     label: op.label,
     onClick: () => {
-      // Clear existing values when changing operator
+      // Only clear specific values based on operator change, preserve main data
       if (filter.operator !== op.value) {
-        filter.value = ''
-        filter.startValue = ''
-        filter.endValue = ''
+        // For date fields, only clear date range specific values
+        if (getFieldType(fieldValue) === 'date') {
+          if (op.value === 'between') {
+            // Switching to between - keep single value as start value
+            if (filter.value && !filter.startValue) {
+              filter.startValue = filter.value
+              filter.endValue = ''
+            }
+          } else if (filter.operator === 'between') {
+            // Switching from between - use start value as main value
+            if (filter.startValue && !filter.value) {
+              filter.value = filter.startValue
+            }
+            filter.startValue = ''
+            filter.endValue = ''
+          }
+        }
+        
+        // Don't clear main filter values - preserve user input
+        // Only clear operator-specific UI state
         filter.multiSelectValue = null
         filter.searchValue = ''
-        filter.displayValue = ''
-        filter.tagInput = ''
         
-        // Clear search suggestions
+        // Clear search suggestions but keep selected values
         filter.suggestions = []
         filter.searchOptions = []
       }
@@ -827,10 +841,22 @@ const updateDateRange = (filter) => {
 
 // Main Functions
 const addFilter = (fieldValue) => {
+  // Set default operators based on field type
+  const fieldType = getFieldType(fieldValue)
+  let defaultOperator = 'equals'
+  
+  if (fieldType === 'link') {
+    defaultOperator = 'in' // Default to 'In' for link fields
+  } else if (fieldType === 'tags') {
+    defaultOperator = 'has' // Default to 'Has Tag' for tags
+  } else {
+    defaultOperator = getOperatorsForField(fieldValue)[0]?.value || 'equals'
+  }
+  
   const newFilter = {
     id: ++filterIdCounter,
     field: fieldValue,
-    operator: getOperatorsForField(fieldValue)[0]?.value || 'equals',
+    operator: defaultOperator,
     value: '',
     // Date range specific properties
     startValue: '',
