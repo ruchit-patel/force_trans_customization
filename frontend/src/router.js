@@ -5,17 +5,7 @@ import { session } from "./data/session"
 const routes = [
 	{
 		path: "/",
-		name: "Home",
-		component: () => import("@/pages/Home.vue"),
-	},
-	{
-		name: "Login",
-		path: "/account/login",
-		component: () => import("@/pages/Login.vue"),
-	},
-	{
 		name: "IssueTracker",
-		path: "/issue-tracker",
 		component: () => import("@/pages/IssueTracker.vue"),
 	},
 ]
@@ -33,10 +23,9 @@ router.beforeEach(async (to, from, next) => {
 		isLoggedIn = false
 	}
 
-	if (to.name === "Login" && isLoggedIn) {
-		next({ name: "Home" })
-	} else if (to.name !== "Login" && !isLoggedIn) {
-		next({ name: "Login" })
+	if (!isLoggedIn) {
+		// Redirect to Frappe's login page
+		window.location.href = "/login?redirect-to=" + encodeURIComponent(window.location.pathname)
 	} else {
 		next()
 	}

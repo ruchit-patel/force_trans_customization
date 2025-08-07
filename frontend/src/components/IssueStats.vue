@@ -36,7 +36,7 @@
         'bg-white p-6 rounded-lg shadow-sm border cursor-pointer transition-all duration-200 hover:shadow-md',
         activeFilter === 'actionable_tickets' ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-orange-50'
       ]"
-      title="Issues where customer awaits our reply"
+      title="Tickets where customer awaits our reply"
     >
       <div class="text-3xl font-bold text-orange-600">{{ actionableTickets }}</div>
       <div class="text-sm text-gray-600 mt-1">Customers Awaiting Our Reply</div>
@@ -47,7 +47,7 @@
         'bg-white p-6 rounded-lg shadow-sm border cursor-pointer transition-all duration-200 hover:shadow-md',
         activeFilter === 'response_tickets' ? 'ring-2 ring-purple-500 bg-purple-50' : 'hover:bg-purple-50'
       ]"
-      title="Issues awaiting customer response"
+      title="Tickets awaiting customer response"
     >
       <div class="text-3xl font-bold text-purple-600">{{ responseTickets }}</div>
       <div class="text-sm text-gray-600 mt-1">Awaiting Response from Customer</div>

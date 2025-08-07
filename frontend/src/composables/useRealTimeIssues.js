@@ -50,8 +50,8 @@ export function useRealTimeIssues() {
 
       addNotification({
         type: 'info',
-        title: 'Issue Updated',
-        message: `Issue "${data.name}" was updated`,
+        title: 'Ticket Updated',
+        message: `Ticket "${data.name}" was updated`,
         timestamp: new Date()
       })
 

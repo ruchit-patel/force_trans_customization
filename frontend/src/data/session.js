@@ -14,27 +14,13 @@ export function sessionUser() {
 }
 
 export const session = reactive({
-	login: createResource({
-		url: "login",
-		makeParams({ email, password }) {
-			return {
-				usr: email,
-				pwd: password,
-			}
-		},
-		onSuccess(data) {
-			userResource.reload()
-			session.user = sessionUser()
-			session.login.reset()
-			router.replace(data.default_route || "/")
-		},
-	}),
 	logout: createResource({
 		url: "logout",
 		onSuccess() {
 			userResource.reset()
 			session.user = sessionUser()
-			router.replace({ name: "Login" })
+			// Redirect to Frappe's login page
+			window.location.href = "/login?redirect-to=" + encodeURIComponent(window.location.pathname)
 		},
 	}),
 	user: sessionUser(),

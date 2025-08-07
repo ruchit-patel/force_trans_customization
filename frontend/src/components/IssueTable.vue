@@ -509,7 +509,7 @@ export default {
 			resizeColumn: false,
 			rowHeight: 60,
 			emptyState: {
-				title: "No issues found",
+				title: "No tickets found",
 				description: "Try adjusting your search or filter criteria",
 			},
 			onRowClick: (row) => {

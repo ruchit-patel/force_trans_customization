@@ -5,14 +5,11 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center py-4">
           <div class="flex items-center space-x-4">
-            <h1 class="text-2xl font-bold text-gray-900">Issue Tracker</h1>
+            <h1 class="text-2xl font-bold text-gray-900">Ticket Tracker</h1>
             <nav class="flex space-x-4">
-              <router-link to="/" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
-                Home
-              </router-link>
-              <router-link to="/issue-tracker"
+              <router-link to="/"
                 class="bg-blue-100 text-blue-700 px-3 py-2 rounded-md text-sm font-medium">
-                Issues
+                Tickets
               </router-link>
             </nav>
           </div>

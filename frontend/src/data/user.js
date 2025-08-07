@@ -6,7 +6,8 @@ export const userResource = createResource({
 	cache: "User",
 	onError(error) {
 		if (error && error.exc_type === "AuthenticationError") {
-			router.push({ name: "LoginPage" })
+			// Redirect to Frappe's login page
+			window.location.href = "/login?redirect-to=" + encodeURIComponent(window.location.pathname)
 		}
 	},
 })
