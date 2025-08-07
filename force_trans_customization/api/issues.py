@@ -9,50 +9,43 @@ def process_filter_list(filters):
     Process the new filter list structure from frontend
     Converts filter objects to frappe.get_list compatible format
     """
-    print("🔧 PROCESSING FILTER LIST:")
     processed_filters = {}
     or_filters = []
     
     if not filters or not isinstance(filters, list):
-        print("❌ No filters provided or invalid format")
         return processed_filters, or_filters
     
-    print(f"📝 Processing {len(filters)} filter(s):")
     
     for i, filter_obj in enumerate(filters):
         if not isinstance(filter_obj, dict):
-            print(f"   ❌ Filter {i+1}: Invalid format (not dict)")
             continue
             
         field = filter_obj.get('field')
         operator = filter_obj.get('operator')
         value = filter_obj.get('value')
-        
-        print(f"   🔍 Filter {i+1}: field='{field}', operator='{operator}', value='{value}'")
-        
         if not field or not operator or value is None or value == '':
-            print(f"   ❌ Filter {i+1}: Skipped (missing field/operator/value)")
             continue
             
         # Convert string values to appropriate types
         processed_value = convert_filter_value(field, value, operator)
-        print(f"   ✅ Filter {i+1}: Processed value='{processed_value}'")
         
+
         # Handle different operators
         if operator == 'equals':
+            # Special handling for child table fields - skip in main processing
+            if field in ['custom_users_assigned', 'custom_assigned_csm_team']:
+                # Child table fields will be handled separately in get_child_table_filters
+                continue
             # Special handling for date fields - convert to between operator for exact date match
-            if field in ['creation', 'modified'] and isinstance(processed_value, str) and len(processed_value) == 10:
+            elif field in ['creation', 'modified'] and isinstance(processed_value, str) and len(processed_value) == 10:
                 # For date equals, convert to between start and end of day
                 start_datetime = f"{processed_value} 00:00:00"
                 end_datetime = f"{processed_value} 23:59:59"
                 processed_filters[field] = ['between', [start_datetime, end_datetime]]
-                print(f"   📅 Filter {i+1}: Date equals converted → {field} between [{start_datetime}, {end_datetime}]")
             else:
                 processed_filters[field] = processed_value
-                print(f"   ✅ Filter {i+1}: Applied equals → {field} = {processed_value}")
         elif operator == 'not_equals':
             processed_filters[field] = ['!=', processed_value]
-            print(f"   🚫 Filter {i+1}: Applied not equals → {field} != {processed_value}")
         elif operator == 'like' or operator == 'contains':
             if field == 'subject':
                 # Special handling for subject - search in both subject and description
@@ -60,10 +53,8 @@ def process_filter_list(filters):
                     ['subject', 'like', f'%{processed_value}%'],
                     ['description', 'like', f'%{processed_value}%']
                 ])
-                print(f"   🔍 Filter {i+1}: Subject search added to OR filters → subject LIKE '%{processed_value}%' OR description LIKE '%{processed_value}%'")
             else:
                 processed_filters[field] = ['like', f'%{processed_value}%']
-                print(f"   🔍 Filter {i+1}: Applied like → {field} LIKE '%{processed_value}%'")
         elif operator == 'starts_with':
             processed_filters[field] = ['like', f'{processed_value}%']
         elif operator == 'ends_with':
@@ -77,6 +68,10 @@ def process_filter_list(filters):
         elif operator == 'less_than_equal':
             processed_filters[field] = ['<=', processed_value]
         elif operator == 'in':
+            # Special handling for child table fields - skip in main processing  
+            if field in ['custom_users_assigned', 'custom_assigned_csm_team']:
+                # Child table fields will be handled separately in get_child_table_filters
+                continue
             # Handle comma-separated values or arrays
             if isinstance(processed_value, str):
                 values = [v.strip() for v in processed_value.split(',') if v.strip()]
@@ -84,15 +79,17 @@ def process_filter_list(filters):
                 values = processed_value if isinstance(processed_value, list) else [processed_value]
             if values:
                 processed_filters[field] = ['in', values]
-                print(f"   📋 Filter {i+1}: Applied IN → {field} IN {values}")
         elif operator == 'not_in':
+            # Special handling for child table fields - skip in main processing
+            if field in ['custom_users_assigned', 'custom_assigned_csm_team']:
+                # Child table fields will be handled separately in get_child_table_filters  
+                continue
             if isinstance(processed_value, str):
                 values = [v.strip() for v in processed_value.split(',') if v.strip()]
             else:
                 values = processed_value if isinstance(processed_value, list) else [processed_value]
             if values:
                 processed_filters[field] = ['not in', values]
-                print(f"   🚫📋 Filter {i+1}: Applied NOT IN → {field} NOT IN {values}")
         elif operator == 'between':
             # Handle date/datetime ranges - value should be "start,end"
             if isinstance(processed_value, str) and ',' in processed_value:
@@ -104,17 +101,10 @@ def process_filter_list(filters):
             # This will be handled separately in tag filtering
             if field == '_user_tags':
                 # We'll handle this in a special way since tags are in a separate table
-                print(f"   🏷️  Filter {i+1}: Tag filter will be processed separately → {field} {operator} {processed_value}")
                 continue
         else:
             # Default to equals
             processed_filters[field] = processed_value
-            print(f"   📝 Filter {i+1}: Applied as equals → {field} = {processed_value}")
-    
-    print(f"🎯 FILTER PROCESSING COMPLETE:")
-    print(f"   📊 Processed Filters: {processed_filters}")
-    print(f"   🔀 OR Filters: {or_filters}")
-    print("-"*40)
     
     return processed_filters, or_filters
 
@@ -182,26 +172,182 @@ def get_tag_filters(filters):
     return tag_filters
 
 
+def get_child_table_filters(filters):
+    """
+    Extract child table filters from the filter list (custom_users_assigned, custom_assigned_csm_team)
+    """
+    child_filters = []
+    if not filters or not isinstance(filters, list):
+        return child_filters
+    
+    for filter_obj in filters:
+        if isinstance(filter_obj, dict) and filter_obj.get('field') in ['custom_users_assigned', 'custom_assigned_csm_team']:
+            child_filters.append(filter_obj)
+    
+    return child_filters
+
+
+def get_issues_by_child_table_filters(child_filters):
+    """
+    Get issue names that match child table filters
+    Returns None if no child filters, empty list if no matches, list of names if matches found
+    """
+    if not child_filters:
+        return None
+    
+    
+    issue_names_sets = []
+    
+    for i, child_filter in enumerate(child_filters):
+        field = child_filter.get('field')
+        operator = child_filter.get('operator')
+        value = child_filter.get('value')
+        
+        
+        if not value:
+            continue
+        
+        # Parse values from value
+        if isinstance(value, str):
+            values = [v.strip() for v in value.split(',') if v.strip()]
+        else:
+            values = [value] if not isinstance(value, list) else value
+        
+        
+        if not values:
+            continue
+        
+        issue_names = set()
+        
+        # Determine the child table name based on field
+        if field == 'custom_users_assigned':
+            child_table = "Team User Assignment"
+            child_field = "user_assigned"
+        elif field == 'custom_assigned_csm_team':
+            child_table = "Team User Assignment"  # Assuming same table with team field
+            child_field = "team"
+        else:
+            continue
+        
+        # Check if table exists
+        if not frappe.db.table_exists(child_table):
+            continue
+        
+        
+        if operator == 'in':
+            if len(values) == 1:
+                # Single value case - find issues that have this specific user assigned
+                child_links = frappe.db.get_all(
+                    child_table,
+                    filters={
+                        "parenttype": "Issue",
+                        "parentfield": field,
+                        child_field: values[0]
+                    },
+                    fields=["parent"]
+                )
+                issue_names.update([link.parent for link in child_links])
+            else:
+                # Multiple values - find issues that have ALL the specified users
+                potential_issues = frappe.db.get_all(
+                    child_table,
+                    filters={
+                        "parenttype": "Issue",
+                        "parentfield": field,
+                        child_field: ["in", values]
+                    },
+                    fields=["parent", child_field]
+                )
+                
+                # Group by issue name to count how many of the required users are assigned
+                issue_user_counts = {}
+                for link in potential_issues:
+                    if link.parent not in issue_user_counts:
+                        issue_user_counts[link.parent] = set()
+                    # Use direct field access instead of getattr for better compatibility
+                    if field == 'custom_users_assigned':
+                        issue_user_counts[link.parent].add(link.user_assigned)
+                    elif field == 'custom_assigned_csm_team':
+                        issue_user_counts[link.parent].add(link.team)
+                
+                # Find issues that have all required users assigned
+                required_users_set = set(values)
+                for issue_name, assigned_users in issue_user_counts.items():
+                    if required_users_set.issubset(assigned_users):
+                        issue_names.add(issue_name)
+        
+        elif operator == 'equals':
+            # Issues that have the exact value
+            child_links = frappe.db.get_all(
+                child_table,
+                filters={
+                    "parenttype": "Issue",
+                    "parentfield": field,
+                    child_field: values[0] if values else ""
+                },
+                fields=["parent"]
+            )
+            issue_names.update([link.parent for link in child_links])
+        
+        elif operator == 'not_in':
+            # Issues that do NOT have the specified values
+            all_issues = frappe.db.get_all(
+                "Issue",
+                fields=["name"]
+            )
+            
+            # Get all issues that have ANY of the specified users
+            issues_with_any_values = frappe.db.get_all(
+                child_table,
+                filters={
+                    "parenttype": "Issue",
+                    "parentfield": field,
+                    child_field: ["in", values]
+                },
+                fields=["parent"]
+            )
+            
+            issues_with_values_set = {link.parent for link in issues_with_any_values}
+            
+            # Return all issues except those that have any of the specified users
+            issue_names.update([
+                issue.name for issue in all_issues 
+                if issue.name not in issues_with_values_set
+            ])
+            
+        if issue_names:
+            issue_names_sets.append(issue_names)
+    
+    # Intersect all sets (AND operation between different child filters)
+    if not issue_names_sets:
+        return None
+    
+    result = issue_names_sets[0]
+    
+    for i, issue_set in enumerate(issue_names_sets[1:], 2):
+        result = result.intersection(issue_set)
+    
+    final_result = list(result)
+    
+    return final_result
+
+
 def get_issues_by_tag_filters(tag_filters):
     """
     Get issue names that match tag filters
     Returns None if no tag filters, empty list if no matches, list of names if matches found
     """
     if not tag_filters:
-        print("🏷️  No tag filters provided")
         return None
     
-    print(f"🏷️  PROCESSING {len(tag_filters)} TAG FILTER(S):")
     issue_names_sets = []
     
     for i, tag_filter in enumerate(tag_filters):
         operator = tag_filter.get('operator')
         value = tag_filter.get('value')
         
-        print(f"   🏷️  Tag Filter {i+1}: operator='{operator}', value='{value}'")
         
         if not value:
-            print(f"   ❌ Tag Filter {i+1}: Skipped (no value)")
             continue
         
         # Parse tags from value
@@ -210,17 +356,14 @@ def get_issues_by_tag_filters(tag_filters):
         else:
             tags = [value] if not isinstance(value, list) else value
         
-        print(f"   📝 Tag Filter {i+1}: Parsed tags = {tags}")
         
         if not tags:
-            print(f"   ❌ Tag Filter {i+1}: Skipped (no valid tags)")
             continue
         
         issue_names = set()
         
         if operator == 'has':
             # Issues that have ANY of the specified tags (A OR B OR C)
-            print(f"   🔍 Tag Filter {i+1}: Searching for issues with ANY of these tags...")
             tag_links = frappe.db.get_all(
                 "Tag Link",
                 filters={
@@ -230,14 +373,11 @@ def get_issues_by_tag_filters(tag_filters):
                 fields=["document_name"]
             )
             issue_names.update([link.document_name for link in tag_links])
-            print(f"   ✅ Tag Filter {i+1}: Found {len(issue_names)} issues with any of the tags")
         
         elif operator == 'has_all':
             # Issues that have ALL of the specified tags (A AND B AND C)
-            print(f"   🔍 Tag Filter {i+1}: Searching for issues with ALL of these tags...")
             if len(tags) == 1:
                 # Single tag case
-                print(f"   📝 Tag Filter {i+1}: Single tag case - searching for '{tags[0]}'")
                 tag_links = frappe.db.get_all(
                     "Tag Link",
                     filters={
@@ -247,10 +387,8 @@ def get_issues_by_tag_filters(tag_filters):
                     fields=["document_name"]
                 )
                 issue_names.update([link.document_name for link in tag_links])
-                print(f"   ✅ Tag Filter {i+1}: Found {len(issue_names)} issues with the tag")
             else:
                 # Multiple tags - need all
-                print(f"   📝 Tag Filter {i+1}: Multiple tags case - need ALL {len(tags)} tags")
                 potential_issues = frappe.db.get_all(
                     "Tag Link",
                     filters={
@@ -259,7 +397,6 @@ def get_issues_by_tag_filters(tag_filters):
                     },
                     fields=["document_name", "tag"]
                 )
-                print(f"   🔍 Tag Filter {i+1}: Found {len(potential_issues)} tag links to analyze")
                 
                 # Group by issue name
                 issue_tag_counts = {}
@@ -268,25 +405,20 @@ def get_issues_by_tag_filters(tag_filters):
                         issue_tag_counts[link.document_name] = set()
                     issue_tag_counts[link.document_name].add(link.tag)
                 
-                print(f"   📊 Tag Filter {i+1}: Analyzing {len(issue_tag_counts)} unique issues")
                 
                 # Find issues that have all required tags
                 required_tags_set = set(tags)
                 for issue_name, issue_tags in issue_tag_counts.items():
                     if required_tags_set.issubset(issue_tags):
                         issue_names.add(issue_name)
-                        print(f"   ✅ Tag Filter {i+1}: Issue '{issue_name}' has all required tags: {issue_tags}")
                 
-                print(f"   ✅ Tag Filter {i+1}: Found {len(issue_names)} issues with ALL required tags")
         
         elif operator == 'not_has':
             # Issues that do NOT have ANY of the specified tags (NOT A AND NOT B)
-            print(f"   🔍 Tag Filter {i+1}: Searching for issues WITHOUT any of these tags...")
             all_issues = frappe.db.get_all(
                 "Issue",
                 fields=["name"]
             )
-            print(f"   📊 Tag Filter {i+1}: Total issues in system: {len(all_issues)}")
             
             issues_with_tags = frappe.db.get_all(
                 "Tag Link",
@@ -296,39 +428,26 @@ def get_issues_by_tag_filters(tag_filters):
                 },
                 fields=["document_name"]
             )
-            print(f"   🔍 Tag Filter {i+1}: Issues with specified tags: {len(issues_with_tags)}")
             
             issues_with_tags_set = {link.document_name for link in issues_with_tags}
             issue_names.update([
                 issue.name for issue in all_issues 
                 if issue.name not in issues_with_tags_set
             ])
-            print(f"   ✅ Tag Filter {i+1}: Found {len(issue_names)} issues WITHOUT the specified tags")
         
         if issue_names:
             issue_names_sets.append(issue_names)
-            print(f"   📝 Tag Filter {i+1}: Added {len(issue_names)} issues to result set")
-        else:
-            print(f"   ❌ Tag Filter {i+1}: No matching issues found")
     
     # Intersect all sets (AND operation between different tag filters)
     if not issue_names_sets:
-        print("🏷️  TAG FILTER RESULT: No valid tag filters produced results")
         return None
     
-    print(f"🏷️  TAG FILTER INTERSECTION: Combining {len(issue_names_sets)} result set(s)")
     result = issue_names_sets[0]
-    print(f"   📊 Starting with {len(result)} issues from first filter")
     
     for i, issue_set in enumerate(issue_names_sets[1:], 2):
         result = result.intersection(issue_set)
-        print(f"   📊 After intersecting with filter {i}: {len(result)} issues remain")
     
     final_result = list(result)
-    print(f"🏷️  FINAL TAG FILTER RESULT: {len(final_result)} issues")
-    if final_result:
-        print(f"   📄 Issues: {final_result[:5]}{'...' if len(final_result) > 5 else ''}")
-    print("-"*40)
     
     return final_result
 
@@ -344,13 +463,6 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
         limit_page_length = int(limit_page_length)
         limit_start = int(limit_start)
         
-        print("="*80)
-        print("🔍 ISSUE FILTER DEBUG - get_issues_with_assignments")
-        print("="*80)
-        print(f"📥 Input Filters (Raw): {filters}")
-        print(f"📊 Pagination: limit={limit_page_length}, start={limit_start}")
-        print(f"📋 Order By: {order_by}")
-        print("-"*80)
         
         # Handle filters
         if filters is None:
@@ -359,8 +471,6 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             import json
             filters = json.loads(filters)
             
-        print(f"📥 Parsed Filters: {filters}")
-        print("-"*40)
         # Base fields to fetch from Issue doctype
         fields = [
             "name",
@@ -379,39 +489,47 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
         
         # Process new filter structure from frontend
         processed_filters, or_filters = process_filter_list(filters)
-        print(f"🔧 Processed Filters: {processed_filters}")
-        print(f"🔀 OR Filters: {or_filters}")
         
         # Handle tag filters separately (since tags are in Tag Link table)
         tag_filters = get_tag_filters(filters)
-        print(f"🏷️  Tag Filters: {tag_filters}")
         issue_names_from_tags = None
         
         if tag_filters:
             issue_names_from_tags = get_issues_by_tag_filters(tag_filters)
-            print(f"🎯 Issues from Tag Filters: {issue_names_from_tags}")
             if issue_names_from_tags is not None:
                 if len(issue_names_from_tags) == 0:
-                    print("❌ No issues match tag filters - returning empty result")
                     return []
-                else:
-                    # Add name filter to restrict to issues matching tags
-                    processed_filters['name'] = ['in', issue_names_from_tags]
-                    print(f"✅ Added name filter for tag results: {len(issue_names_from_tags)} issues")
+        
+        # Handle child table filters separately (since they are in child tables)
+        child_filters = get_child_table_filters(filters)
+        issue_names_from_child_tables = None
+        
+        if child_filters:
+            issue_names_from_child_tables = get_issues_by_child_table_filters(child_filters)
+            if issue_names_from_child_tables is not None:
+                if len(issue_names_from_child_tables) == 0:
+                    return []
+        
+        # Combine all issue name restrictions
+        final_issue_names = None
+        if issue_names_from_tags is not None and issue_names_from_child_tables is not None:
+            # Both filters exist - intersect them
+            final_issue_names = list(set(issue_names_from_tags).intersection(set(issue_names_from_child_tables)))
+        elif issue_names_from_tags is not None:
+            final_issue_names = issue_names_from_tags
+        elif issue_names_from_child_tables is not None:
+            final_issue_names = issue_names_from_child_tables
+        
+        # Apply combined name filter if needed
+        if final_issue_names is not None:
+            if len(final_issue_names) == 0:
+                return []
+            else:
+                processed_filters['name'] = ['in', final_issue_names]
         
         # Get issues using frappe.get_list with enhanced filter handling
-        print("-"*40)
-        print("🗄️  FINAL FRAPPE QUERY:")
-        print(f"   📋 Doctype: Issue")
-        print(f"   📊 Fields: {fields}")
-        print(f"   🔍 Filters: {processed_filters}")
-        print(f"   🔀 OR Filters: {or_filters}")
-        print(f"   📈 Order By: {order_by}")
-        print(f"   📄 Pagination: {limit_page_length} items from {limit_start}")
-        print("-"*40)
         
         if or_filters:
-            print("🔄 Executing query WITH OR filters...")
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
@@ -422,7 +540,6 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
                 limit_start=limit_start
             )
         else:
-            print("🔄 Executing query WITHOUT OR filters...")
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
@@ -432,10 +549,6 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
                 limit_start=limit_start
             )
         
-        print(f"✅ Query Result: Found {len(issues)} issues")
-        if issues:
-            print(f"📄 First issue: {issues[0].get('name')} - {issues[0].get('subject')}")
-        print("-"*40)
         
         # For each issue, fetch the custom_users_assigned child table data and tags
         for issue in issues:
@@ -934,6 +1047,16 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                 if len(issue_names_from_tags) == 0:
                     return []  # No issues match tag filters
         
+        # Handle child table filters separately (since they are in child tables)
+        child_filters = get_child_table_filters(filters)
+        issue_names_from_child_tables = None
+        
+        if child_filters:
+            issue_names_from_child_tables = get_issues_by_child_table_filters(child_filters)
+            if issue_names_from_child_tables is not None:
+                if len(issue_names_from_child_tables) == 0:
+                    return []
+        
         # Get current user
         current_user = frappe.session.user
         
@@ -953,23 +1076,28 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             "description"
         ]
         
+        # Combine all issue name restrictions
+        final_issue_names = None
+        if issue_names_from_tags is not None and issue_names_from_child_tables is not None:
+            # Both filters exist - intersect them
+            final_issue_names = list(set(issue_names_from_tags).intersection(set(issue_names_from_child_tables)))
+        elif issue_names_from_tags is not None:
+            final_issue_names = issue_names_from_tags
+        elif issue_names_from_child_tables is not None:
+            final_issue_names = issue_names_from_child_tables
+        
         # Build filters based on stat type
         if stat_type == "team_tickets":
             # All issues user can see with additional filters
             combined_filters = additional_filters.copy()
             
-            # Apply tag filtering if needed
-            if issue_names_from_tags is not None:
-                if len(issue_names_from_tags) == 0:
-                    return []  # No issues match tag filters
-                combined_filters['name'] = ['in', issue_names_from_tags]
+            # Apply combined filtering if needed
+            if final_issue_names is not None:
+                if len(final_issue_names) == 0:
+                    return []  # No issues match filters
+                combined_filters['name'] = ['in', final_issue_names]
 
 
-            print("-------------------------------------------")
-            print(combined_filters)
-            print(additional_or_filters)
-            print("-------------------------------------------")
-            
             if additional_or_filters:
                 issues = frappe.get_list(
                     "Issue",
@@ -1083,11 +1211,11 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             combined_filters = additional_filters.copy()
             combined_filters["custom_is_response_expected"] = 1
             
-            # Apply tag filtering if needed
-            if issue_names_from_tags is not None:
-                if len(issue_names_from_tags) == 0:
+            # Apply combined filtering if needed
+            if final_issue_names is not None:
+                if len(final_issue_names) == 0:
                     return []
-                combined_filters['name'] = ['in', issue_names_from_tags]
+                combined_filters['name'] = ['in', final_issue_names]
             
             if additional_or_filters:
                 issues = frappe.get_list(
@@ -1116,11 +1244,11 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             combined_filters = additional_filters.copy()
             combined_filters["custom_is_response_awaited"] = 1
             
-            # Apply tag filtering if needed
-            if issue_names_from_tags is not None:
-                if len(issue_names_from_tags) == 0:
+            # Apply combined filtering if needed
+            if final_issue_names is not None:
+                if len(final_issue_names) == 0:
                     return []
-                combined_filters['name'] = ['in', issue_names_from_tags]
+                combined_filters['name'] = ['in', final_issue_names]
             
             if additional_or_filters:
                 issues = frappe.get_list(
@@ -1192,6 +1320,14 @@ def get_stat_filter_count(stat_type, filters=None):
     Enhanced to accept additional filters from the frontend
     """
     try:
+        # Validate stat_type parameter
+        if not stat_type:
+            frappe.throw(_("stat_type parameter is required"))
+        
+        valid_stat_types = ["team_tickets", "assigned_to_me", "open_tickets", "actionable_tickets", "response_tickets"]
+        if stat_type not in valid_stat_types:
+            frappe.throw(_("Invalid stat_type: {0}. Valid types are: {1}").format(stat_type, ', '.join(valid_stat_types)))
+        
         # Handle additional filters from frontend
         if filters is None:
             filters = []
@@ -1201,18 +1337,49 @@ def get_stat_filter_count(stat_type, filters=None):
             except:
                 filters = []
         
-        # Process additional filters
-        additional_filters, additional_or_filters = process_filter_list(filters)
+        # Process additional filters with error handling
+        try:
+            additional_filters, additional_or_filters = process_filter_list(filters)
+        except Exception as filter_error:
+            additional_filters, additional_or_filters = {}, []
         
-        # Handle tag filters from additional filters
-        tag_filters = get_tag_filters(filters)
-        issue_names_from_tags = None
+        # Handle tag filters from additional filters with error handling
+        try:
+            tag_filters = get_tag_filters(filters)
+            issue_names_from_tags = None
+            
+            if tag_filters:
+                issue_names_from_tags = get_issues_by_tag_filters(tag_filters)
+                if issue_names_from_tags is not None:
+                    if len(issue_names_from_tags) == 0:
+                        return 0  # No issues match tag filters
+        except Exception as tag_error:
+            issue_names_from_tags = None
         
-        if tag_filters:
-            issue_names_from_tags = get_issues_by_tag_filters(tag_filters)
-            if issue_names_from_tags is not None:
-                if len(issue_names_from_tags) == 0:
-                    return 0  # No issues match tag filters
+        # Handle child table filters with error handling
+        try:
+            child_filters = get_child_table_filters(filters)
+            issue_names_from_child_tables = None
+            
+            if child_filters:
+                issue_names_from_child_tables = get_issues_by_child_table_filters(child_filters)
+                if issue_names_from_child_tables is not None:
+                    if len(issue_names_from_child_tables) == 0:
+                        return 0  # No issues match child table filters
+        except Exception as child_error:
+            issue_names_from_child_tables = None
+        
+        # Combine all issue name restrictions
+        final_issue_names = None
+        if issue_names_from_tags is not None and issue_names_from_child_tables is not None:
+            # Both filters exist - intersect them
+            final_issue_names = list(set(issue_names_from_tags).intersection(set(issue_names_from_child_tables)))
+            if len(final_issue_names) == 0:
+                return 0
+        elif issue_names_from_tags is not None:
+            final_issue_names = issue_names_from_tags
+        elif issue_names_from_child_tables is not None:
+            final_issue_names = issue_names_from_child_tables
         
         # Get current user
         current_user = frappe.session.user
@@ -1221,54 +1388,65 @@ def get_stat_filter_count(stat_type, filters=None):
             # All issues user can see with additional filters
             combined_filters = additional_filters.copy()
             
-            # Apply tag filtering if needed
-            if issue_names_from_tags is not None:
-                if len(issue_names_from_tags) == 0:
-                    return 0  # No issues match tag filters
-                combined_filters['name'] = ['in', issue_names_from_tags]
+            # Apply combined filtering if needed
+            if final_issue_names is not None:
+                if len(final_issue_names) == 0:
+                    return 0  # No issues match filters
+                combined_filters['name'] = ['in', final_issue_names]
             
-            if additional_or_filters:
-                all_issues = frappe.get_list(
-                    "Issue",
-                    filters=combined_filters,
-                    or_filters=additional_or_filters,
-                    limit_page_length=0,
-                    as_list=True,
-                    ignore_permissions=False
-                )
-            else:
-                all_issues = frappe.get_list(
-                    "Issue",
-                    filters=combined_filters,
-                    limit_page_length=0,
-                    as_list=True,
-                    ignore_permissions=False
-                )
-            return len(all_issues)
+            try:
+                if additional_or_filters:
+                    all_issues = frappe.get_list(
+                        "Issue",
+                        filters=combined_filters,
+                        or_filters=additional_or_filters,
+                        limit_page_length=0,
+                        as_list=True,
+                        ignore_permissions=False
+                    )
+                else:
+                    all_issues = frappe.get_list(
+                        "Issue",
+                        filters=combined_filters,
+                        limit_page_length=0,
+                        as_list=True,
+                        ignore_permissions=False
+                    )
+                return len(all_issues)
+            except Exception as db_error:
+                return 0
         
         elif stat_type == "assigned_to_me":
             # Get all issues first, then filter by assignment
-            all_issues = frappe.get_list(
-                "Issue",
-                fields=["name"],
-                limit_page_length=0,
-                ignore_permissions=False
-            )
-            
-            if all_issues:
-                issue_names = [issue.name for issue in all_issues]
-                user_assignments = frappe.db.get_all(
-                    "Team User Assignment",
-                    filters={
-                        "parent": ["in", issue_names],
-                        "parenttype": "Issue",
-                        "parentfield": "custom_users_assigned",
-                        "user_assigned": current_user
-                    },
-                    fields=["parent"]
+            try:
+                all_issues = frappe.get_list(
+                    "Issue",
+                    fields=["name"],
+                    limit_page_length=0,
+                    ignore_permissions=False
                 )
-                return len(user_assignments)
-            return 0
+                
+                if all_issues:
+                    issue_names = [issue.name for issue in all_issues]
+                    
+                    # Check if Team User Assignment table exists
+                    if not frappe.db.table_exists("Team User Assignment"):
+                        return 0
+                    
+                    user_assignments = frappe.db.get_all(
+                        "Team User Assignment",
+                        filters={
+                            "parent": ["in", issue_names],
+                            "parenttype": "Issue",
+                            "parentfield": "custom_users_assigned",
+                            "user_assigned": current_user
+                        },
+                        fields=["parent"]
+                    )
+                    return len(user_assignments)
+                return 0
+            except Exception as db_error:
+                return 0
         
         elif stat_type == "open_tickets":
             # Use the same logic as in get_issue_stats
@@ -1318,11 +1496,11 @@ def get_stat_filter_count(stat_type, filters=None):
             combined_filters = additional_filters.copy()
             combined_filters["custom_is_response_expected"] = 1
             
-            # Apply tag filtering if needed
-            if issue_names_from_tags is not None:
-                if len(issue_names_from_tags) == 0:
+            # Apply combined filtering if needed
+            if final_issue_names is not None:
+                if len(final_issue_names) == 0:
                     return 0
-                combined_filters['name'] = ['in', issue_names_from_tags]
+                combined_filters['name'] = ['in', final_issue_names]
             
             if additional_or_filters:
                 result = frappe.get_list(
@@ -1348,11 +1526,11 @@ def get_stat_filter_count(stat_type, filters=None):
             combined_filters = additional_filters.copy()
             combined_filters["custom_is_response_awaited"] = 1
             
-            # Apply tag filtering if needed
-            if issue_names_from_tags is not None:
-                if len(issue_names_from_tags) == 0:
+            # Apply combined filtering if needed
+            if final_issue_names is not None:
+                if len(final_issue_names) == 0:
                     return 0
-                combined_filters['name'] = ['in', issue_names_from_tags]
+                combined_filters['name'] = ['in', final_issue_names]
             
             if additional_or_filters:
                 result = frappe.get_list(
@@ -1375,17 +1553,23 @@ def get_stat_filter_count(stat_type, filters=None):
         
         else:
             # Default to all issues
-            all_issues = frappe.get_list(
-                "Issue",
-                limit_page_length=0,
-                as_list=True,
-                ignore_permissions=False
-            )
-            return len(all_issues)
+            try:
+                all_issues = frappe.get_list(
+                    "Issue",
+                    limit_page_length=0,
+                    as_list=True,
+                    ignore_permissions=False
+                )
+                return len(all_issues)
+            except Exception as db_error:
+                return 0
         
     except Exception as e:
-        frappe.log_error(f"Error in get_stat_filter_count: {str(e)}")
-        frappe.throw(_("Failed to get stat filter count: {0}").format(str(e)))
+        error_message = str(e)
+        frappe.log_error(f"Error in get_stat_filter_count: {error_message}")
+        
+        # Return 0 instead of throwing to avoid frontend errors
+        return 0
 
 
 @frappe.whitelist()

@@ -428,13 +428,16 @@ const availableFields = [
 // Field Options Data - Only for select type fields
 const fieldOptions = {
   status: [
-    { value: 'open', label: 'Open' },
-    { value: 'in_progress', label: 'In Progress' },
-    { value: 'resolved', label: 'Resolved' },
-    { value: 'closed', label: 'Closed' },
-    { value: 'cancelled', label: 'Cancelled' }
+    { value: 'New', label: 'New' },
+    { value: 'In Review', label: 'In Review' },
+    { value: 'Waiting on Customer', label: 'Waiting on Customer' },
+    { value: 'Confirmed', label: 'Confirmed' },
+    { value: 'In Transit', label: 'In Transit' },
+    { value: 'Delivered', label: 'Delivered' },
+    { value: 'Closed', label: 'Closed' },
   ]
 }
+
 
 // Operator options based on field type
 const operatorsByType = {
