@@ -252,10 +252,15 @@ const currentSortDirection = computed(() => {
 })
 
 const handleSort = ({ field, direction }) => {
-  // Update the sort order in the composable
+  // Update the sort order in filters
   const newSortOrder = `${field} ${direction}`
-  // This will trigger the watcher and reload data
   filters.value.sortBy = newSortOrder
+  
+  // Reset to first page when sorting
+  currentPage.value = 1
+  
+  // Trigger the same API call that happens when clicking cards
+  refreshCurrentView()
 }
 
 // Handle suggestion selection from search - now just opens issue in new tab

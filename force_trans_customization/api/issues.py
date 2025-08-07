@@ -4,6 +4,93 @@ from datetime import datetime
 import json
 
 
+def process_order_by(order_by_param):
+    """
+    Process order_by parameter to support multiple column sorting
+    Input can be:
+    - String: "creation desc" or "creation,modified desc" 
+    - List: [{"field": "creation", "direction": "desc"}, {"field": "modified", "direction": "asc"}]
+    - Dict: {"field": "creation", "direction": "desc"}
+    
+    Returns: Frappe-compatible order_by string
+    """
+    if not order_by_param:
+        return "creation desc"
+    
+    # If it's already a simple string, return as-is
+    if isinstance(order_by_param, str):
+        return order_by_param
+    
+    # If it's a list of sort objects
+    if isinstance(order_by_param, list):
+        order_parts = []
+        for sort_obj in order_by_param:
+            if isinstance(sort_obj, dict):
+                field = sort_obj.get('field', 'creation')
+                direction = sort_obj.get('direction', 'desc').lower()
+                if direction not in ['asc', 'desc']:
+                    direction = 'desc'
+                order_parts.append(f"{field} {direction}")
+            elif isinstance(sort_obj, str):
+                order_parts.append(sort_obj)
+        return ", ".join(order_parts) if order_parts else "creation desc"
+    
+    # If it's a single sort object
+    if isinstance(order_by_param, dict):
+        field = order_by_param.get('field', 'creation')
+        direction = order_by_param.get('direction', 'desc').lower()
+        if direction not in ['asc', 'desc']:
+            direction = 'desc'
+        return f"{field} {direction}"
+    
+    return "creation desc"
+
+
+def get_valid_sort_fields():
+    """
+    Get list of valid sortable fields for Issue doctype
+    """
+    return [
+        'name', 'subject', 'status', 'priority', 'raised_by', 
+        'customer', 'project', 'issue_type', 'creation', 'modified', 
+        'owner', 'first_responded_on', 'resolution_time'
+    ]
+
+
+def validate_and_clean_order_by(order_by_str):
+    """
+    Validate and clean the order_by string to prevent SQL injection
+    and ensure only valid fields are used
+    """
+    if not order_by_str or not isinstance(order_by_str, str):
+        return "creation desc"
+    
+    valid_fields = get_valid_sort_fields()
+    valid_directions = ['asc', 'desc']
+    
+    # Split by comma for multiple sorts
+    parts = [part.strip() for part in order_by_str.split(',')]
+    cleaned_parts = []
+    
+    for part in parts:
+        # Split field and direction
+        tokens = part.strip().split()
+        if len(tokens) >= 2:
+            field = tokens[0].strip()
+            direction = tokens[1].strip().lower()
+        elif len(tokens) == 1:
+            field = tokens[0].strip()
+            direction = 'desc'  # Default direction
+        else:
+            continue  # Skip invalid parts
+        
+        # Validate field and direction
+        if field in valid_fields and direction in valid_directions:
+            cleaned_parts.append(f"{field} {direction}")
+    
+    return ", ".join(cleaned_parts) if cleaned_parts else "creation desc"
+
+
 def process_filter_list(filters):
     """
     Process the new filter list structure from frontend
@@ -31,7 +118,7 @@ def process_filter_list(filters):
         
 
         # Handle different operators
-        if operator == 'equals':
+        if operator == 'equals' or operator == 'is':
             # Special handling for child table fields - skip in main processing
             if field in ['custom_users_assigned', 'custom_assigned_csm_team']:
                 # Child table fields will be handled separately in get_child_table_filters
@@ -248,7 +335,7 @@ def get_issues_by_child_table_filters(child_filters):
                 )
                 issue_names.update([link.parent for link in child_links])
             else:
-                # Multiple values - find issues that have ALL the specified users
+                # Multiple values - different logic for different fields
                 potential_issues = frappe.db.get_all(
                     child_table,
                     filters={
@@ -259,24 +346,25 @@ def get_issues_by_child_table_filters(child_filters):
                     fields=["parent", child_field]
                 )
                 
-                # Group by issue name to count how many of the required users are assigned
-                issue_user_counts = {}
-                for link in potential_issues:
-                    if link.parent not in issue_user_counts:
-                        issue_user_counts[link.parent] = set()
-                    # Use direct field access instead of getattr for better compatibility
-                    if field == 'custom_users_assigned':
+                if field == 'custom_users_assigned':
+                    # For user assignment: need ALL specified users to be assigned (AND logic)
+                    issue_user_counts = {}
+                    for link in potential_issues:
+                        if link.parent not in issue_user_counts:
+                            issue_user_counts[link.parent] = set()
                         issue_user_counts[link.parent].add(link.user_assigned)
-                    elif field == 'custom_assigned_csm_team':
-                        issue_user_counts[link.parent].add(link.team)
-                
-                # Find issues that have all required users assigned
-                required_users_set = set(values)
-                for issue_name, assigned_users in issue_user_counts.items():
-                    if required_users_set.issubset(assigned_users):
-                        issue_names.add(issue_name)
+                    
+                    # Find issues that have all required users assigned
+                    required_users_set = set(values)
+                    for issue_name, assigned_users in issue_user_counts.items():
+                        if required_users_set.issubset(assigned_users):
+                            issue_names.add(issue_name)
+                            
+                elif field == 'custom_assigned_csm_team':
+                    # For CSM team assignment: need ANY of the specified teams (OR logic)
+                    issue_names.update([link.parent for link in potential_issues])
         
-        elif operator == 'equals':
+        elif operator == 'equals' or operator == 'is':
             # Issues that have the exact value
             child_links = frappe.db.get_all(
                 child_table,
@@ -296,7 +384,7 @@ def get_issues_by_child_table_filters(child_filters):
                 fields=["name"]
             )
             
-            # Get all issues that have ANY of the specified users
+            # Get all issues that have ANY of the specified values
             issues_with_any_values = frappe.db.get_all(
                 child_table,
                 filters={
@@ -309,7 +397,8 @@ def get_issues_by_child_table_filters(child_filters):
             
             issues_with_values_set = {link.parent for link in issues_with_any_values}
             
-            # Return all issues except those that have any of the specified users
+            # Return all issues except those that have any of the specified values
+            # This logic works the same for both User Assigned and CSM Team
             issue_names.update([
                 issue.name for issue in all_issues 
                 if issue.name not in issues_with_values_set
@@ -456,12 +545,23 @@ def get_issues_by_tag_filters(tag_filters):
 def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=None, order_by="creation desc"):
     """
     Get issues list with custom_users_assigned child table data
-    Enhanced to handle complex filter objects from frontend
+    Enhanced to handle complex filter objects from frontend and support advanced sorting
     """
     try:
         # Convert string parameters to integers
         limit_page_length = int(limit_page_length)
         limit_start = int(limit_start)
+        
+        # Process and validate order_by parameter
+        if isinstance(order_by, str) and order_by.startswith('[') and order_by.endswith(']'):
+            # Handle JSON string input from frontend
+            try:
+                order_by = json.loads(order_by)
+            except:
+                order_by = "creation desc"
+        
+        processed_order_by = process_order_by(order_by)
+        validated_order_by = validate_and_clean_order_by(processed_order_by)
         
         
         # Handle filters
@@ -535,7 +635,7 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
                 fields=fields,
                 filters=processed_filters,
                 or_filters=or_filters,
-                order_by=order_by,
+                order_by=validated_order_by,
                 limit_page_length=limit_page_length,
                 limit_start=limit_start
             )
@@ -544,7 +644,7 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
                 "Issue",
                 fields=fields,
                 filters=processed_filters,
-                order_by=order_by,
+                order_by=validated_order_by,
                 limit_page_length=limit_page_length,
                 limit_start=limit_start
             )
@@ -813,6 +913,16 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
         limit_page_length = int(limit_page_length)
         limit_start = int(limit_start)
         
+        # Process and validate order_by parameter
+        if isinstance(order_by, str) and order_by.startswith('[') and order_by.endswith(']'):
+            try:
+                order_by = json.loads(order_by)
+            except:
+                order_by = "creation desc"
+        
+        processed_order_by = process_order_by(order_by)
+        validated_order_by = validate_and_clean_order_by(processed_order_by)
+        
         # Build filters based on suggestion type and value
         filters = {}
         
@@ -863,7 +973,7 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
                 "Issue",
                 fields=fields,
                 or_filters=or_filters,
-                order_by=order_by,
+                order_by=validated_order_by,
                 limit_page_length=limit_page_length,
                 limit_start=limit_start,
                 ignore_permissions=False
@@ -1025,6 +1135,16 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
         limit_page_length = int(limit_page_length)
         limit_start = int(limit_start)
         
+        # Process and validate order_by parameter
+        if isinstance(order_by, str) and order_by.startswith('[') and order_by.endswith(']'):
+            try:
+                order_by = json.loads(order_by)
+            except:
+                order_by = "creation desc"
+        
+        processed_order_by = process_order_by(order_by)
+        validated_order_by = validate_and_clean_order_by(processed_order_by)
+        
         # Handle additional filters from frontend
         if filters is None:
             filters = []
@@ -1104,7 +1224,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                     fields=fields,
                     filters=combined_filters,
                     or_filters=additional_or_filters,
-                    order_by=order_by,
+                    order_by=validated_order_by,
                     limit_page_length=limit_page_length,
                     limit_start=limit_start,
                     ignore_permissions=False
@@ -1114,7 +1234,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                     "Issue",
                     fields=fields,
                     filters=combined_filters,
-                    order_by=order_by,
+                    order_by=validated_order_by,
                     limit_page_length=limit_page_length,
                     limit_start=limit_start,
                     ignore_permissions=False
@@ -1223,7 +1343,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                     fields=fields,
                     filters=combined_filters,
                     or_filters=additional_or_filters,
-                    order_by=order_by,
+                    order_by=validated_order_by,
                     limit_page_length=limit_page_length,
                     limit_start=limit_start,
                     ignore_permissions=False
@@ -1233,7 +1353,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                     "Issue",
                     fields=fields,
                     filters=combined_filters,
-                    order_by=order_by,
+                    order_by=validated_order_by,
                     limit_page_length=limit_page_length,
                     limit_start=limit_start,
                     ignore_permissions=False
@@ -1256,7 +1376,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                     fields=fields,
                     filters=combined_filters,
                     or_filters=additional_or_filters,
-                    order_by=order_by,
+                    order_by=validated_order_by,
                     limit_page_length=limit_page_length,
                     limit_start=limit_start,
                     ignore_permissions=False
@@ -1266,7 +1386,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                     "Issue",
                     fields=fields,
                     filters=combined_filters,
-                    order_by=order_by,
+                    order_by=validated_order_by,
                     limit_page_length=limit_page_length,
                     limit_start=limit_start,
                     ignore_permissions=False
@@ -1277,7 +1397,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             issues = frappe.get_list(
                 "Issue",
                 fields=fields,
-                order_by=order_by,
+                order_by=validated_order_by,
                 limit_page_length=limit_page_length,
                 limit_start=limit_start,
                 ignore_permissions=False
@@ -1848,6 +1968,33 @@ def search_contacts(search_query="", limit=10):
     except Exception as e:
         frappe.log_error(f"Error in search_contacts: {str(e)}")
         frappe.throw(_("Failed to search contacts: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def get_sortable_columns():
+    """
+    Get list of sortable columns with their display labels for the frontend
+    """
+    try:
+        columns = [
+            {"field": "name", "label": "Issue ID", "type": "string"},
+            {"field": "subject", "label": "Subject", "type": "string"},
+            {"field": "status", "label": "Status", "type": "string"},
+            {"field": "priority", "label": "Priority", "type": "string"},
+            {"field": "raised_by", "label": "Raised By", "type": "string"},
+            {"field": "customer", "label": "Customer", "type": "string"},
+            {"field": "project", "label": "Project", "type": "string"},
+            {"field": "issue_type", "label": "Issue Type", "type": "string"},
+            {"field": "creation", "label": "Created On", "type": "datetime"},
+            {"field": "modified", "label": "Modified On", "type": "datetime"},
+            {"field": "owner", "label": "Owner", "type": "string"},
+            {"field": "first_responded_on", "label": "First Response", "type": "datetime"},
+            {"field": "resolution_time", "label": "Resolution Time", "type": "duration"}
+        ]
+        return columns
+    except Exception as e:
+        frappe.log_error(f"Error in get_sortable_columns: {str(e)}")
+        frappe.throw(_("Failed to get sortable columns: {0}").format(str(e)))
 
 
 @frappe.whitelist()
