@@ -214,7 +214,8 @@ def get_latest_communications(issue_names):
                 sent_or_received,
                 creation,
                 sender,
-                recipients
+                recipients,
+                seen 
             FROM `tabCommunication`
             WHERE 
                 reference_doctype = 'Issue'
@@ -237,7 +238,8 @@ def get_latest_communications(issue_names):
                     'sent_or_received': comm.sent_or_received,
                     'creation': comm.creation,
                     'sender': comm.sender,
-                    'recipients': comm.recipients
+                    'recipients': comm.recipients,
+                    'seen': comm.seen
                 }
         
         return latest_communications
@@ -1035,7 +1037,7 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
                 ignore_permissions=False
             )
             
-            # Get latest communications for all issues in batch
+            # Get latest communications and unseen counts for all issues in batch
             issue_names = [issue.name for issue in issues]
             latest_communications = get_latest_communications(issue_names)
             
@@ -1062,7 +1064,6 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
                 )
                 issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
                 
-                # Add latest communication data
                 issue["latest_communication"] = latest_communications.get(issue.name)
             
             return issues
@@ -1283,8 +1284,6 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                     return []  # No issues match filters
                 combined_filters['name'] = ['in', final_issue_names]
 
-            print("--------------combined_filters--------------")
-            print(combined_filters)
             if additional_or_filters:
                 issues = frappe.get_list(
                     "Issue",
@@ -2128,6 +2127,116 @@ def search_leads(search_query="", limit=10):
     except Exception as e:
         frappe.log_error(f"Error in search_leads: {str(e)}")
         frappe.throw(_("Failed to search leads: {0}").format(str(e)))
+
+
+@frappe.whitelist()
+def get_issue_communications(issue_name, limit=5):
+    """
+    Get latest communications for a specific issue
+    Returns latest communications with full content for detailed view
+    """
+    try:
+        limit = int(limit)
+        
+        if not issue_name:
+            frappe.throw(_("Issue name is required"))
+        
+        # Check if issue exists and user has permission
+        if not frappe.db.exists("Issue", issue_name):
+            frappe.throw(_("Issue not found"))
+            
+        # Get communications for the issue
+        communications = frappe.db.sql("""
+            SELECT 
+                name,
+                subject,
+                content,
+                sent_or_received,
+                creation,
+                modified,
+                sender,
+                recipients,
+                seen,
+                communication_medium,
+                communication_type
+            FROM `tabCommunication`
+            WHERE 
+                reference_doctype = 'Issue'
+                AND reference_name = %s
+                AND communication_type = 'Communication'
+                AND content IS NOT NULL
+                AND content != ''
+            ORDER BY creation DESC
+            LIMIT %s
+        """, [issue_name, limit], as_dict=True)
+        
+        # Process communications to clean content and add metadata
+        processed_communications = []
+        for comm in communications:
+            processed_communications.append({
+                'name': comm.name,
+                'subject': comm.subject or 'No Subject',
+                'content': comm.content,
+                'sent_or_received': comm.sent_or_received,
+                'creation': comm.creation,
+                'modified': comm.modified,
+                'sender': comm.sender,
+                'recipients': comm.recipients,
+                'seen': comm.seen,
+                'communication_medium': comm.communication_medium,
+                'communication_type': comm.communication_type,
+                'formatted_date': comm.creation.strftime("%Y-%m-%d %H:%M:%S") if comm.creation else "",
+                'relative_time': get_relative_time(comm.creation) if comm.creation else ""
+            })
+        
+        return processed_communications
+        
+    except Exception as e:
+        frappe.log_error(f"Error in get_issue_communications: {str(e)}")
+        frappe.throw(_("Failed to fetch communications: {0}").format(str(e)))
+
+
+def get_relative_time(datetime_obj):
+    """
+    Get relative time string like '2 hours ago', '3 days ago', etc.
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        if not datetime_obj:
+            return ""
+            
+        now = datetime.now()
+        
+        # Convert to datetime if it's a date
+        if hasattr(datetime_obj, 'date') and not hasattr(datetime_obj, 'hour'):
+            datetime_obj = datetime.combine(datetime_obj, datetime.min.time())
+            
+        diff = now - datetime_obj
+        
+        if diff.days > 0:
+            if diff.days == 1:
+                return "1 day ago"
+            elif diff.days < 30:
+                return f"{diff.days} days ago"
+            elif diff.days < 365:
+                months = diff.days // 30
+                return f"{months} month{'s' if months > 1 else ''} ago"
+            else:
+                years = diff.days // 365
+                return f"{years} year{'s' if years > 1 else ''} ago"
+        elif diff.seconds > 3600:
+            hours = diff.seconds // 3600
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        elif diff.seconds > 60:
+            minutes = diff.seconds // 60
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        else:
+            return "Just now"
+            
+    except Exception as e:
+        frappe.log_error(f"Error in get_relative_time: {str(e)}")
+        return ""
 
 
 @frappe.whitelist()

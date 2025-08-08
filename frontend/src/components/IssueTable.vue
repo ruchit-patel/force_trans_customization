@@ -53,30 +53,33 @@
 									{{ formatIssueId(item) }}
 								</a>
 
-								<!-- Title with description and communication indicator -->
+
+								<!-- Title with description tooltip and communication click -->
 								<div v-else-if="column.key === 'subject'" class="max-w-xs">
-									<div 
-										class="cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
-										@mouseenter="showCommunicationPopupFn($event, issue)"
-										@mouseleave="hideCommunicationPopup">
-										<div class="flex items-center gap-2">
-											<div class="flex-1">
-												<div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}</div>
-												<div v-if="issue.description" class="text-gray-500 text-sm mt-1 truncate"
-													:title="issue.description">
-													{{ stripHtml(issue.description) }}
-												</div>
-											</div>
-											
-										</div>
+									<div class="font-medium truncate cursor-pointer" @click="openCommunicationDialog(issue)">
+										{{ issue.subject }}
 									</div>
+									<Tooltip 
+										v-if="issue.description" 
+										:text="stripHtml(issue.description)"
+										placement="top"
+									>
+										<div class="text-gray-500 text-sm mt-1 description-text cursor-help">
+											{{ stripHtml(issue.description) }}
+										</div>
+									</Tooltip>
 								</div>
 
 								<!-- Assignee email with truncation -->
-								<span v-else-if="column.key === 'raised_by'"
-									class="text-sm font-medium text-gray-900 truncate block" :title="item || '-'">
-									{{ item || '-' }}
-								</span>
+								<Tooltip 
+									v-if="column.key === 'raised_by'" 
+									:text="item || '-'"
+									placement="top"
+								>
+									<span class="text-sm font-medium text-gray-900 truncate block cursor-help">
+										{{ item || '-' }}
+									</span>
+								</Tooltip>
 
 								<!-- Assigned Users as pills with hover popup -->
 								<div v-else-if="column.key === 'custom_users_assigned'" class="flex flex-wrap gap-1">
@@ -127,11 +130,6 @@
 									class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
 									{{ issue.status?.label || issue.status || 'New' }}
 								</span>
-
-
-
-								<!-- Default fallback for other columns -->
-								<span v-else>{{ item }}</span>
 							</template>
 						</ListRowItem>
 					</template>
@@ -188,45 +186,112 @@
 			</div>
 		</div>
 
-		<!-- Communication Popup -->
-		<div v-if="showCommunicationPopup && communicationPopupData"
-			class="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-4 min-w-80 max-w-md" :style="{
-				left: communicationPopupPosition.x + 'px',
-				top: communicationPopupPosition.y + 'px',
-				transform: 'translateX(-50%) translateY(-100%)'
-			}">
-			<div class="text-sm">
-				<div class="flex items-center justify-between mb-3">
-					<div class="font-semibold text-gray-900 flex items-center gap-2">
-						<FeatherIcon name="mail" class="h-4 w-4 text-gray-600" />
-						{{ communicationPopupData.subject }}
+		<!-- Communication Dialog -->
+		<Dialog 
+			v-model="showCommunicationDialog" 
+			:options="{
+				title: `Communications - ${selectedIssue?.name || ''}`,
+				size: 'xl'
+			}"
+		>
+			<template #body>
+				<div v-if="loadingCommunications" class="flex items-center justify-center py-8">
+					<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+					<span class="ml-2 text-gray-600">Loading communications...</span>
+				</div>
+				
+				<div v-else-if="communications.length === 0" class="text-center py-8 text-gray-500">
+					<FeatherIcon name="mail" class="h-12 w-12 mx-auto mb-4 text-gray-300" />
+					<p>No communications found for this issue</p>
+				</div>
+
+				<div v-else class="space-y-4 p-4 max-h-96 overflow-y-auto">
+					<div v-if="selectedIssue?.name" class="mb-4 flex justify-end">
+						<button 
+							@click="openIssue"
+							class="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
+						>
+							<FeatherIcon name="external-link" class="h-4 w-4" />
+							Open Issue
+						</button>
 					</div>
-					<Badge
-						:label="communicationPopupData.sent_or_received"
-						:theme="getCommunicationStatusTheme(communicationPopupData.sent_or_received)"
-						variant="subtle"
-						size="sm"
-					/>
-				</div>
-				
-				<div v-if="communicationPopupData.content" class="mb-2">
-					<div class="text-gray-700 text-sm leading-relaxed max-h-32 overflow-y-auto">
-						Last Communication : {{ stripHtml(communicationPopupData.content) }}
+
+
+					<div 
+						v-for="(comm, index) in communications" 
+						:key="comm.name"
+						class="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+						:class="{
+							'border-blue-200 bg-blue-50': comm.sent_or_received === 'Sent',
+							'border-green-200 bg-green-50': comm.sent_or_received === 'Received'
+						}"
+					>
+						<!-- Header -->
+						<div class="flex items-start justify-between mb-3">
+							<div class="flex-1">
+								<div class="flex items-center gap-2 mb-1">
+									<FeatherIcon 
+										:name="comm.sent_or_received === 'Sent' ? 'arrow-up' : 'arrow-down'" 
+										class="h-4 w-4"
+										:class="{
+											'text-blue-600': comm.sent_or_received === 'Sent',
+											'text-green-600': comm.sent_or_received === 'Received'
+										}"
+									/>
+									<h4 class="font-medium text-gray-900 truncate">
+										{{ comm.subject || 'No Subject' }}
+									</h4>
+								</div>
+								<div class="text-sm text-gray-600 flex items-center gap-4">
+									<span>{{ comm.sender || '-' }}</span>
+									<span>{{ comm.relative_time || formatDateTime(comm.creation) }}</span>
+									<Badge
+										:label="comm.sent_or_received"
+										:theme="getCommunicationStatusTheme(comm.sent_or_received)"
+										variant="subtle"
+										size="sm"
+									/>
+								</div>
+							</div>
+						</div>
+
+						<!-- Content -->
+						<div class="prose prose-sm max-w-none">
+							<div 
+								class="text-gray-800 leading-relaxed whitespace-pre-wrap"
+								v-html="sanitizeContent(comm.content) || 'No content'">
+							</div>
+						</div>
+
+
+						<!-- Footer -->
+						<div class="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500 flex items-center justify-between">
+							<span>
+								{{ comm.communication_medium || 'Email' }} • 
+								{{ formatDateTime(comm.creation) }}
+							</span>
+							<span v-if="comm.seen" class="text-green-600">
+								<FeatherIcon name="check" class="h-3 w-3 inline" /> Seen
+							</span>
+						</div>
 					</div>
 				</div>
-				
-				
-				
-				<div class="text-xs text-gray-400 mt-3 text-center">
-					{{ formatDateTime(communicationPopupData.creation) }}
-				</div>
-			</div>
-		</div>
+			</template>
+			
+			<template #actions>
+				<Button 
+					variant="ghost" 
+					@click="showCommunicationDialog = false"
+				>
+					Close
+				</Button>
+			</template>
+		</Dialog>
 	</div>
 </template>
 
 <script>
-import { Avatar, Badge, Button, FeatherIcon, ListView } from "frappe-ui"
+import { Avatar, Badge, Button, FeatherIcon, ListView, Tooltip, Dialog } from "frappe-ui"
 import ListHeader from "frappe-ui/src/components/ListView/ListHeader.vue"
 import ListHeaderItem from "frappe-ui/src/components/ListView/ListHeaderItem.vue"
 import ListRow from "frappe-ui/src/components/ListView/ListRow.vue"
@@ -235,8 +300,13 @@ import ListRows from "frappe-ui/src/components/ListView/ListRows.vue"
 import ListSelectBanner from "frappe-ui/src/components/ListView/ListSelectBanner.vue"
 import { computed, ref, shallowRef, watchEffect } from "vue"
 import { getTagColor } from "../data/issues"
+import { call } from "frappe-ui"
 
 // Enhanced status badge component with custom status values
+
+
+
+
 const StatusBadge = {
 	props: ["status"],
 	template: `
@@ -324,6 +394,8 @@ export default {
 		ListSelectBanner,
 		StatusBadge,
 		PriorityBadge,
+		Tooltip,
+		Dialog,
 	},
 	props: {
 		issues: {
@@ -355,10 +427,11 @@ export default {
 		const tagsPopupPosition = ref({ x: 0, y: 0 })
 		const tagsPopupData = ref(null)
 
-		// Communication popup state management
-		const showCommunicationPopup = ref(false)
-		const communicationPopupPosition = ref({ x: 0, y: 0 })
-		const communicationPopupData = ref(null)
+		// Communication dialog state management
+		const showCommunicationDialog = ref(false)
+		const selectedIssue = ref(null)
+		const communications = ref([])
+		const loadingCommunications = ref(false)
 
 		// Helper methods
 		const getInitials = (name) => {
@@ -408,11 +481,27 @@ export default {
 
 		const stripHtml = (html) => {
 			if (!html) return "";
-			const tmp = document.createElement("div");
-			tmp.innerHTML = html;
-
-			const firstP = tmp.querySelector("p");
-			return firstP ? firstP.textContent.trim() : "";
+			
+			// Handle string input that might not be HTML
+			if (typeof html !== 'string') {
+				return String(html);
+			}
+			
+			try {
+				// Create a temporary element to parse HTML
+				const tmp = document.createElement("div");
+				tmp.innerHTML = html;
+				
+				// Get all text content, which strips all HTML tags and attributes
+				let textContent = tmp.textContent || tmp.innerText || "";
+				
+				// Clean up whitespace and return
+				return textContent.replace(/\s+/g, ' ').trim();
+			} catch (error) {
+				// If there's any error, just return the original string
+				console.warn('Error stripping HTML:', error);
+				return String(html).replace(/\s+/g, ' ').trim();
+			}
 		}
 
 
@@ -695,22 +784,33 @@ export default {
 			tagsPopupData.value = null
 		}
 
-		// Communication popup functions
-		const showCommunicationPopupFn = (event, issue) => {
-			if (!issue.latest_communication) return
-
-			const rect = event.currentTarget.getBoundingClientRect()
-			communicationPopupPosition.value = {
-				x: rect.left + rect.width / 2,
-				y: rect.top - 10,
+		// Communication dialog functions
+		const openCommunicationDialog = async (issue) => {
+			selectedIssue.value = issue
+			showCommunicationDialog.value = true
+			loadingCommunications.value = true
+			communications.value = []
+			
+			try {
+				const result = await call('force_trans_customization.api.issues.get_issue_communications', {
+					issue_name: issue.name,
+					limit: 5
+				})
+				
+				communications.value = result || []
+			} catch (error) {
+				console.error('Error fetching communications:', error)
+				communications.value = []
+			} finally {
+				loadingCommunications.value = false
 			}
-			communicationPopupData.value = issue.latest_communication
-			showCommunicationPopup.value = true
 		}
 
-		const hideCommunicationPopup = () => {
-			showCommunicationPopup.value = false
-			communicationPopupData.value = null
+		// Open issue in Frappe
+		const openIssue = () => {
+			if (selectedIssue.value?.name) {
+				window.location.href = `/app/issue/${selectedIssue.value.name}`;
+			}
 		}
 
 		// Sorting functionality
@@ -817,6 +917,27 @@ export default {
 			})
 		}
 
+		// Sanitize HTML content for communication display
+		const sanitizeContent = (content) => {
+			if (!content) return "";
+
+			// Remove blockquote tags & their content
+			let cleaned = content.replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "");
+
+			// Remove &nbsp;
+			cleaned = cleaned.replace(/&nbsp;/gi, " ");
+
+			// Remove multiple spaces & extra <p><br></p>
+			cleaned = cleaned
+				.replace(/\s+/g, " ") // collapse multiple spaces
+				.replace(/<p><br><\/p>/gi, ""); // remove empty paragraphs
+
+			// Optional: trim leading/trailing spaces
+			cleaned = cleaned.trim();
+
+			return cleaned;
+		}
+
 		return {
 			columns,
 			listOptions,
@@ -845,16 +966,18 @@ export default {
 			getTagStyle,
 			getCommunicationStatusTheme,
 			formatDateTime,
+			sanitizeContent,
 			showTagsPopup,
 			tagsPopupPosition,
 			tagsPopupData,
 			showTagsPopupFn,
 			hideTagsPopupFn,
-			showCommunicationPopup,
-			communicationPopupPosition,
-			communicationPopupData,
-			showCommunicationPopupFn,
-			hideCommunicationPopup,
+			showCommunicationDialog,
+			selectedIssue,
+			communications,
+			loadingCommunications,
+			openCommunicationDialog,
+			openIssue,
 		}
 	},
 }
@@ -866,5 +989,22 @@ export default {
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
+}
+
+/* Enhanced truncate for better ellipsis display */
+.truncate {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Ensure proper text display in description */
+.description-text {
+	max-width: 100%;
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: 1.4;
 }
 </style>
