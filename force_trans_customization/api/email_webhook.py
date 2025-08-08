@@ -24,11 +24,14 @@ import mimetypes
 import email
 import re
 from frappe import _
-from frappe.utils import now_datetime, strip_html_tags, cstr, get_datetime, today, nowtime
+from frappe.utils import now_datetime, strip_html_tags, cstr, get_datetime, today, nowtime, get_string_between
 from frappe.email.doctype.email_account.email_account import EmailAccount
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import decode_header
+
+# Thread ID pattern from Frappe's receive.py
+THREAD_ID_PATTERN = re.compile(r"(?<=\[)[\w/-]+")
 
 
 @frappe.whitelist(methods=["POST"])
@@ -102,6 +105,15 @@ def process_ses_email(email_data):
         # Find matching Email Account
         email_account = find_matching_email_account(primary_recipient, to_emails)
         
+        # Extract In-Reply-To header for reply detection
+        in_reply_to = headers.get('In-Reply-To', '') or headers.get('in-reply-to', '')
+        if in_reply_to:
+            in_reply_to = get_string_between('<', in_reply_to, '>')
+        
+        # Clean message_id
+        if message_id:
+            message_id = get_string_between('<', message_id, '>')
+        
         # Create Communication record
         communication = create_communication_record(
             message_id=message_id,
@@ -112,7 +124,8 @@ def process_ses_email(email_data):
             body_text=body_text,
             body_html=body_html,
             headers=headers,
-            email_account=email_account
+            email_account=email_account,
+            in_reply_to=in_reply_to
         )
         
         # Process attachments if any
@@ -228,6 +241,15 @@ def process_raw_email(raw_email_content):
         primary_recipient = to_emails[0] if to_emails else ""
         email_account = find_matching_email_account(primary_recipient, to_emails)
         
+        # Extract In-Reply-To header for reply detection
+        in_reply_to = msg.get('In-Reply-To', '')
+        if in_reply_to:
+            in_reply_to = get_string_between('<', in_reply_to, '>')
+        
+        # Extract message_id properly
+        if message_id:
+            message_id = get_string_between('<', message_id, '>')
+        
         # Create Communication record
         communication = create_communication_record(
             message_id=message_id,
@@ -238,7 +260,8 @@ def process_raw_email(raw_email_content):
             body_text=body_text,
             body_html=body_html,
             headers=dict(msg.items()),
-            email_account=email_account
+            email_account=email_account,
+            in_reply_to=in_reply_to
         )
         
         # Process attachments
@@ -446,7 +469,7 @@ def clean_email_content(content):
 
 
 def create_communication_record(message_id, timestamp, from_email, to_emails, 
-                              subject, body_text, body_html, headers, email_account):
+                              subject, body_text, body_html, headers, email_account, in_reply_to=None):
     """
     Create a Communication record similar to how Frappe handles IMAP/POP emails
     """
@@ -500,6 +523,15 @@ def create_communication_record(message_id, timestamp, from_email, to_emails,
     
     # Set message ID for deduplication
     communication.message_id = message_id
+    
+    # Set In-Reply-To for threading (mimicking Frappe's approach)
+    if in_reply_to:
+        # Check if this is a reply to system-sent mail
+        if frappe.local.site in in_reply_to:
+            # Find parent communication by message_id
+            parent_communication = find_parent_communication(in_reply_to)
+            if parent_communication:
+                communication.in_reply_to = parent_communication.name
     
     # Add email headers as JSON
     if headers:
@@ -893,11 +925,21 @@ def validate_webhook_signature(payload, signature, secret):
 
 def create_support_issue_from_communication(communication, sender_email, sender_name, to_emails):
     """
-    Create a Support Issue from the Communication record
+    Create a Support Issue from the Communication record with enhanced reply detection
     """
     try:
-        # Check if an issue already exists for this email thread
-        existing_issue = find_existing_issue(communication.subject, sender_email)
+        # Get In-Reply-To and find parent communication
+        parent_communication = None
+        if hasattr(communication, 'in_reply_to') and communication.in_reply_to:
+            parent_communication = frappe.get_doc("Communication", communication.in_reply_to)
+        
+        # Check if an issue already exists using enhanced logic
+        existing_issue = find_existing_issue_enhanced(
+            communication.subject, 
+            sender_email,
+            parent_communication=parent_communication
+        )
+        
         if existing_issue:
             # Link the communication to the existing issue
             link_communication_to_issue(communication, existing_issue)
@@ -965,20 +1007,81 @@ def create_support_issue_from_communication(communication, sender_email, sender_
         return None
 
 
-def find_existing_issue(subject, sender_email):
+def find_parent_communication(in_reply_to):
     """
-    Find an existing issue with similar subject from the same sender
+    Find parent communication using In-Reply-To header (similar to Frappe's approach)
     """
     try:
-        # Clean subject for matching (remove Re:, Fwd:, etc.)
-        clean_subject = re.sub(r'^(Re:|Fwd?:|RE:|FWD?:)\s*', '', subject, flags=re.IGNORECASE).strip()
+        # First try to find by message_id
+        communication = frappe.db.get_value(
+            "Communication", 
+            {"message_id": in_reply_to}, 
+            "name",
+            order_by="creation desc"
+        )
         
-        # Look for existing issues with similar subject from same sender
+        if communication:
+            return frappe.get_doc("Communication", communication)
+        
+        # If message contains @, split and try the part before @
+        if "@" in in_reply_to:
+            reference, _ = in_reply_to.split("@", 1)
+            communication = frappe.db.get_value("Communication", reference, "name")
+            if communication:
+                return frappe.get_doc("Communication", communication)
+        
+        return None
+        
+    except Exception as e:
+        frappe.log_error(f"Error finding parent communication: {str(e)}")
+        return None
+
+
+def get_thread_id_from_subject(subject):
+    """
+    Extract thread ID from subject using Frappe's pattern
+    """
+    try:
+        matches = THREAD_ID_PATTERN.findall(subject)
+        return matches[0] if matches else None
+    except Exception:
+        return None
+
+
+def find_existing_issue_enhanced(subject, sender_email, in_reply_to=None, parent_communication=None):
+    """
+    Enhanced version of find_existing_issue using Frappe's threading logic
+    """
+    try:
+        # Method 1: If we have a parent communication, get issue from it
+        if parent_communication and parent_communication.reference_doctype == "Issue":
+            return parent_communication.reference_name
+        
+        # Method 2: Extract thread ID from subject
+        thread_id = get_thread_id_from_subject(subject)
+        if thread_id:
+            # Try to find issue by name/ID from thread
+            if frappe.db.exists("Issue", thread_id):
+                return thread_id
+        
+        # Method 3: Extract issue name from subject (e.g., "Re: Issue ISS-2024-001")
+        issue_name = extract_reference_name_from_subject(subject)
+        if issue_name and frappe.db.exists("Issue", issue_name):
+            return issue_name
+        
+        # Method 4: Clean subject for matching (remove Re:, Fwd:, etc.)
+        clean_subject = clean_subject_for_matching(subject)
+        
+        # Method 5: Look for existing issues with similar subject from same sender (within 60 days)
+        from frappe.utils import add_days
+        sixty_days_ago = add_days(get_datetime(), -60)
+        
         issues = frappe.get_list(
             "Issue",
             filters={
                 "raised_by": sender_email,
-                "status": ["not in", ["Closed", "Resolved"]]
+                "status": ["not in", ["Closed", "Resolved"]],
+                "creation": [">=", sixty_days_ago]
             },
             or_filters=[
                 {"subject": ["like", f"%{clean_subject}%"]},
@@ -994,6 +1097,51 @@ def find_existing_issue(subject, sender_email):
     except Exception as e:
         frappe.log_error(f"Error finding existing issue: {str(e)}")
         return None
+
+
+def extract_reference_name_from_subject(subject):
+    """
+    Extract reference name from subject (similar to Frappe's get_reference_name_from_subject)
+    Ex: "Re: Issue ISS-2024-001 - Problem" -> "ISS-2024-001"
+    """
+    try:
+        # Look for patterns like ISS-YYYY-NNNN, ISSUE-NNNN, etc.
+        patterns = [
+            r'(ISS-\d{4}-\d+)',
+            r'(ISSUE-\d+)',
+            r'(\w+-\d{4}-\d+)',  # General pattern like XXX-YYYY-NNNN
+            r'#([A-Z0-9-]+)'     # Hash-prefixed references
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, subject, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        
+        # Fallback: extract from end of subject after #
+        if '#' in subject:
+            return subject.rsplit('#', 1)[-1].strip(' ()')
+        
+        return None
+        
+    except Exception:
+        return None
+
+
+def clean_subject_for_matching(subject):
+    """
+    Clean subject for matching (similar to Frappe's clean_subject)
+    """
+    # Match strings like "fw:", "re:", etc.
+    regex = r"(^\s*(fw|fwd|wg)[^:]*:|\s*(re|aw)[^:]*:\s*)*"
+    return re.sub(regex, "", subject, count=0, flags=re.IGNORECASE).strip()
+
+
+def find_existing_issue(subject, sender_email):
+    """
+    Legacy method - kept for backward compatibility
+    """
+    return find_existing_issue_enhanced(subject, sender_email)
 
 
 def link_communication_to_issue(communication, issue_name):
