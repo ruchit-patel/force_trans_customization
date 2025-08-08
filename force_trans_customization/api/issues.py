@@ -215,7 +215,7 @@ def get_latest_communications(issue_names):
                 creation,
                 sender,
                 recipients,
-                seen 
+                _seen 
             FROM `tabCommunication`
             WHERE 
                 reference_doctype = 'Issue'
@@ -239,7 +239,7 @@ def get_latest_communications(issue_names):
                     'creation': comm.creation,
                     'sender': comm.sender,
                     'recipients': comm.recipients,
-                    'seen': comm.seen
+                    'seen': comm._seen
                 }
         
         return latest_communications
