@@ -194,7 +194,22 @@ const {
     limit_page_length: itemsPerPage.value,
     limit_start: (currentPage.value - 1) * itemsPerPage.value,
   }
-}, refreshCurrentView)
+}, refreshCurrentView, () => {
+  // Return current resource state to match what the component is using
+  if (isUsingStatFilter.value) {
+    return {
+      activeResource: statFilterResource,
+      currentData: statFilterResource.data || [],
+      resourceType: 'stat'
+    }
+  } else {
+    return {
+      activeResource: issuesResource,
+      currentData: issuesResource.data || [],
+      resourceType: 'main'
+    }
+  }
+})
 
 // Override manual refresh to use our custom refresh function
 const manualRefresh = () => {

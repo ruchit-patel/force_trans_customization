@@ -6,7 +6,7 @@ import { reloadIssues, getIssuesCount, issuesResource, fetchSingleIssue, singleI
  * Composable that implements Frappe's list view realtime update pattern
  * Similar to setup_realtime_updates() in frappe/public/js/frappe/list/list_view.js
  */
-export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
+export function useIssueListUpdates(getCurrentParams, customRefreshFunction, getCurrentResourceState) {
   const socket = useSocket()
   const pendingDocumentRefreshes = ref([])
   const realtimeEventsSetup = ref(false)
@@ -17,10 +17,13 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
   const debounceDelay = isLargeTable.value ? 15000 : 2000 // 15s for large tables, 2s for normal
   
   const debouncedRefresh = () => {
+    console.log(`⏰ Setting up debounced refresh with ${debounceDelay}ms delay`)
     if (debounceTimer) {
       clearTimeout(debounceTimer)
+      console.log('🔄 Cleared existing debounce timer')
     }
     debounceTimer = setTimeout(() => {
+      console.log('⏰ Debounce timer fired, calling processDocumentRefreshes')
       processDocumentRefreshes()
     }, debounceDelay)
   }
@@ -38,24 +41,33 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
     
     // Listen for Frappe's standard list_update event
     socket.on('list_update', (data) => {
-      if (data?.doctype !== 'Issue') {
-        return
-      }
+      try {
+        console.log('📡 Received list_update event:', data)
+        
+        if (data?.doctype !== 'Issue') {
+          return
+        }
 
-      // Skip updates if we're in a state where updates should be avoided
-      if (avoidRealtimeUpdate()) {
-        return
-      }
+        // Skip updates if we're in a state where updates should be avoided
+        if (avoidRealtimeUpdate()) {
+          console.log('⏸️ Skipping realtime update (avoid condition met)')
+          return
+        }
 
-      // Only process updates for existing issues, not newly created ones
-      if (data.action === 'insert' || data.action === 'create') {
-        console.log('📝 Skipping new issue creation update:', data.name)
-        return
-      }
+        // Only process updates for existing issues, not newly created ones
+        if (data.action === 'insert' || data.action === 'create') {
+          console.log('📝 Skipping new issue creation update:', data.name)
+          return
+        }
 
-      // Add to pending refreshes
-      pendingDocumentRefreshes.value.push(data)
-      debouncedRefresh()
+        console.log('✅ Adding to pending refreshes:', data.name)
+        // Add to pending refreshes
+        pendingDocumentRefreshes.value.push(data)
+        debouncedRefresh()
+      } catch (error) {
+        console.error('❌ Error processing list_update event:', error)
+        // Don't let realtime errors break the system
+      }
     })
 
     // Also listen for individual document events that should trigger list updates
@@ -114,22 +126,32 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
   }
 
   const processDocumentRefreshes = async () => {
+    console.log('🔄 processDocumentRefreshes called with', pendingDocumentRefreshes.value.length, 'pending refreshes')
+    
     if (!pendingDocumentRefreshes.value.length) {
+      console.log('⏸️ No pending refreshes, returning early')
       return
     }
 
     // Check if we're still on the correct route/page
     const currentRoute = window.location.hash || window.location.pathname
-    if (!currentRoute.includes('issue-tracker') && !currentRoute.includes('issues')) {
+    console.log('🛣️ Current route:', currentRoute)
+    
+    if (!currentRoute.includes('issue-tracker') && !currentRoute.includes('issues') && !currentRoute.includes('frontend')) {
+      console.log('❌ Not on correct route, clearing pending refreshes and disabling updates')
       // Clear pending refreshes if user navigated away
       pendingDocumentRefreshes.value = []
       disableRealtimeUpdates()
       return
     }
+    
+    console.log('✅ Route check passed, proceeding with refresh')
 
     // Get unique document names from pending refreshes
     const uniqueDocuments = [...new Set(pendingDocumentRefreshes.value.map(d => d.name))]
     const refreshCount = uniqueDocuments.length
+
+    console.log(`🔄 Processing ${refreshCount} document refreshes:`, uniqueDocuments)
 
     // Clear pending refreshes
     pendingDocumentRefreshes.value = []
@@ -144,14 +166,24 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
           detail: { count: refreshCount, documents: uniqueDocuments }
         }))
       }
+      
+      console.log(`✅ Successfully processed ${refreshCount} document refreshes`)
     } catch (error) {
-      console.error('Error updating individual rows, falling back to full refresh:', error)
+      console.error('❌ Error updating individual rows, falling back to full refresh:', error)
       // Fallback to full refresh if individual update fails
       try {
-        await reloadIssues()
-        await getIssuesCount()
+        if (customRefreshFunction && typeof customRefreshFunction === 'function') {
+          console.log('🔄 Using custom refresh function for fallback')
+          await customRefreshFunction()
+        } else {
+          console.log('🔄 Using default refresh functions for fallback')
+          await reloadIssues()
+          await getIssuesCount()
+        }
+        console.log('✅ Fallback refresh completed successfully')
       } catch (fallbackError) {
-        console.error('Error in fallback refresh:', fallbackError)
+        console.error('❌ Error in fallback refresh:', fallbackError)
+        // Even if fallback fails, don't disable realtime - just log the error
       }
     }
   }
@@ -214,10 +246,49 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
   }
 
   const getCurrentActiveResource = () => {
-    // Determine which resource is currently active based on data availability
-    // Priority: statFilterResource > issuesResource
+    // Use the parent component's resource state if provided
+    if (getCurrentResourceState && typeof getCurrentResourceState === 'function') {
+      try {
+        const resourceState = getCurrentResourceState()
+        if (resourceState) {
+          console.log(`📊 Using ${resourceState.resourceType} resource for updates (from parent)`)
+          return resourceState
+        }
+      } catch (error) {
+        console.warn('Error getting resource state from parent, falling back to detection:', error)
+      }
+    }
     
-    if (statFilterResource.data && Array.isArray(statFilterResource.data) && statFilterResource.data.length > 0) {
+    // Fallback: Try to detect which resource is currently active
+    // Priority: statFilterResource if it has data and issuesResource doesn't, or vice versa
+    const hasStatData = statFilterResource.data && Array.isArray(statFilterResource.data) && statFilterResource.data.length > 0
+    const hasIssuesData = issuesResource.data && Array.isArray(issuesResource.data) && issuesResource.data.length > 0
+    
+    // If only one has data, use that one
+    if (hasStatData && !hasIssuesData) {
+      console.log('📊 Using statFilterResource for updates (only stat has data)')
+      return {
+        activeResource: statFilterResource,
+        currentData: statFilterResource.data,
+        resourceType: 'stat'
+      }
+    }
+    
+    if (hasIssuesData && !hasStatData) {
+      console.log('📋 Using issuesResource for updates (only issues has data)')
+      return {
+        activeResource: issuesResource,
+        currentData: issuesResource.data,
+        resourceType: 'main'
+      }
+    }
+    
+    // If both have data or neither has data, prefer the one that was loaded more recently
+    const statLastLoaded = statFilterResource.lastLoaded || 0
+    const issuesLastLoaded = issuesResource.lastLoaded || 0
+    
+    if (hasStatData && statLastLoaded >= issuesLastLoaded) {
+      console.log('📊 Using statFilterResource for updates (more recent)')
       return {
         activeResource: statFilterResource,
         currentData: statFilterResource.data,
@@ -226,6 +297,7 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
     }
     
     // Default to main issues resource
+    console.log('📋 Using issuesResource for updates (default)')
     return {
       activeResource: issuesResource,
       currentData: issuesResource.data || [],
@@ -261,20 +333,29 @@ export function useIssueListUpdates(getCurrentParams, customRefreshFunction) {
 
       // Update individual issues in place to trigger Vue reactivity efficiently
       if (activeResource.data && Array.isArray(activeResource.data)) {
+        console.log(`🔄 Updating ${validUpdatedIssues.length} issues in ${activeResource.data.length} total issues`)
+        
         validUpdatedIssues.forEach(updatedIssue => {
           const index = activeResource.data.findIndex(issue => issue.name === updatedIssue.name)
           if (index !== -1) {
+            console.log(`✅ Updating issue at index ${index}: ${updatedIssue.name}`)
             // Direct property update triggers Vue reactivity efficiently
             Object.assign(activeResource.data[index], updatedIssue)
+          } else {
+            console.warn(`⚠️ Issue ${updatedIssue.name} not found in current data for update`)
           }
         })
       } else {
+        console.warn('⚠️ activeResource.data is not an array, using fallback method')
         // Fallback to direct assignment if data structure is unexpected
         const currentIssues = [...currentData]
         validUpdatedIssues.forEach(updatedIssue => {
           const index = currentIssues.findIndex(issue => issue.name === updatedIssue.name)
           if (index !== -1) {
+            console.log(`✅ Updating issue at index ${index}: ${updatedIssue.name} (fallback)`)
             currentIssues[index] = updatedIssue
+          } else {
+            console.warn(`⚠️ Issue ${updatedIssue.name} not found in current data for update (fallback)`)
           }
         })
         activeResource.data = currentIssues
