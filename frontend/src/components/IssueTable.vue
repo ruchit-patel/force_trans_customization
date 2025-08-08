@@ -809,8 +809,9 @@ export default {
 		// Open issue in Frappe
 		const openIssue = () => {
 			if (selectedIssue.value?.name) {
-				window.location.href = `/app/issue/${selectedIssue.value.name}`;
+				window.open(`/app/issue/${selectedIssue.value.name}`, '_blank');
 			}
+
 		}
 
 		// Sorting functionality
