@@ -461,10 +461,10 @@ const operatorsByType = {
   ],
   link: [
     { value: 'in', label: 'In' },
+    { value: 'not_in', label: 'Not In' },
     { value: 'equals', label: 'Is' },
     { value: 'not_equals', label: 'Is Not' },
-    { value: 'like', label: 'Contains' },
-    { value: 'not_in', label: 'Not In' }
+    // { value: 'like', label: 'Contains' },  
   ],
   datetime: [
     { value: 'equals', label: 'On' },
