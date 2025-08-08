@@ -116,11 +116,11 @@ def process_filter_list(filters):
         # Convert string values to appropriate types
         processed_value = convert_filter_value(field, value, operator)
         
-
+        print(f" operator : {operator} --- processed_value : {processed_value} ")
         # Handle different operators
         if operator == 'equals' or operator == 'is':
-            # Special handling for child table fields - skip in main processing
-            if field in ['custom_users_assigned', 'custom_assigned_csm_team']:
+            # Special handling for child table fields - skip custom_users_assigned only
+            if field == 'custom_users_assigned':
                 # Child table fields will be handled separately in get_child_table_filters
                 continue
             # Special handling for date fields - convert to between operator for exact date match
@@ -155,8 +155,8 @@ def process_filter_list(filters):
         elif operator == 'less_than_equal':
             processed_filters[field] = ['<=', processed_value]
         elif operator == 'in':
-            # Special handling for child table fields - skip in main processing  
-            if field in ['custom_users_assigned', 'custom_assigned_csm_team']:
+            # Special handling for child table fields - skip custom_users_assigned only  
+            if field == 'custom_users_assigned':
                 # Child table fields will be handled separately in get_child_table_filters
                 continue
             # Handle comma-separated values or arrays
@@ -167,8 +167,8 @@ def process_filter_list(filters):
             if values:
                 processed_filters[field] = ['in', values]
         elif operator == 'not_in':
-            # Special handling for child table fields - skip in main processing
-            if field in ['custom_users_assigned', 'custom_assigned_csm_team']:
+            # Special handling for child table fields - skip custom_users_assigned only
+            if field == 'custom_users_assigned':
                 # Child table fields will be handled separately in get_child_table_filters  
                 continue
             if isinstance(processed_value, str):
@@ -312,14 +312,14 @@ def get_tag_filters(filters):
 
 def get_child_table_filters(filters):
     """
-    Extract child table filters from the filter list (custom_users_assigned, custom_assigned_csm_team)
+    Extract child table filters from the filter list (custom_users_assigned only)
     """
     child_filters = []
     if not filters or not isinstance(filters, list):
         return child_filters
     
     for filter_obj in filters:
-        if isinstance(filter_obj, dict) and filter_obj.get('field') in ['custom_users_assigned', 'custom_assigned_csm_team']:
+        if isinstance(filter_obj, dict) and filter_obj.get('field') == 'custom_users_assigned':
             child_filters.append(filter_obj)
     
     return child_filters
@@ -341,7 +341,6 @@ def get_issues_by_child_table_filters(child_filters):
         operator = child_filter.get('operator')
         value = child_filter.get('value')
         
-        
         if not value:
             continue
         
@@ -361,16 +360,13 @@ def get_issues_by_child_table_filters(child_filters):
         if field == 'custom_users_assigned':
             child_table = "Team User Assignment"
             child_field = "user_assigned"
-        elif field == 'custom_assigned_csm_team':
-            child_table = "Team User Assignment"  # Assuming same table with team field
-            child_field = "team"
         else:
             continue
+
         
         # Check if table exists
         if not frappe.db.table_exists(child_table):
             continue
-        
         
         if operator == 'in':
             if len(values) == 1:
@@ -410,10 +406,6 @@ def get_issues_by_child_table_filters(child_filters):
                     for issue_name, assigned_users in issue_user_counts.items():
                         if required_users_set.issubset(assigned_users):
                             issue_names.add(issue_name)
-                            
-                elif field == 'custom_assigned_csm_team':
-                    # For CSM team assignment: need ANY of the specified teams (OR logic)
-                    issue_names.update([link.parent for link in potential_issues])
         
         elif operator == 'equals' or operator == 'is':
             # Issues that have the exact value
@@ -449,16 +441,17 @@ def get_issues_by_child_table_filters(child_filters):
             issues_with_values_set = {link.parent for link in issues_with_any_values}
             
             # Return all issues except those that have any of the specified values
-            # This logic works the same for both User Assigned and CSM Team
             issue_names.update([
                 issue.name for issue in all_issues 
                 if issue.name not in issues_with_values_set
             ])
-            
+        
         if issue_names:
             issue_names_sets.append(issue_names)
-    
+        
+
     # Intersect all sets (AND operation between different child filters)
+    print("issue_names_sets : ---------",issue_names_sets)
     if not issue_names_sets:
         return None
     
@@ -636,7 +629,8 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             "modified",
             "owner",
             "description",
-            "communications"
+            "communications",
+            "custom_assigned_csm_team"
         ]
         
         # Process new filter structure from frontend
@@ -821,6 +815,7 @@ def get_single_issue_with_assignments(issue_name):
             "owner",
             "description",
             "communications",
+            "custom_assigned_csm_team"
         ]
         
         # Get the single issue
@@ -1025,7 +1020,8 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
                 "creation",
                 "modified",
                 "owner",
-                "description"
+                "description",
+                "custom_assigned_csm_team"
             ]
             
             # Get issues using frappe.get_list to respect permissions
@@ -1236,6 +1232,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
         
         # Handle child table filters separately (since they are in child tables)
         child_filters = get_child_table_filters(filters)
+
         issue_names_from_child_tables = None
         
         if child_filters:
@@ -1262,6 +1259,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             "owner",
             "description",
             "communications",
+            "custom_assigned_csm_team"
         ]
         
         # Combine all issue name restrictions
@@ -1285,7 +1283,8 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                     return []  # No issues match filters
                 combined_filters['name'] = ['in', final_issue_names]
 
-
+            print("--------------combined_filters--------------")
+            print(combined_filters)
             if additional_or_filters:
                 issues = frappe.get_list(
                     "Issue",
