@@ -199,10 +199,10 @@ def process_filter_list(filters):
 def get_latest_communications(issue_names):
     """
     Get the latest email communication for each issue
-    Returns dict with issue_name as key and communication data as value
+    Returns tuple: (dict with issue_name as key and communication data as value, unread_count)
     """
     if not issue_names:
-        return {}
+        return {}, 0
     
     try:
         # Get the latest communication for each issue in a single query
@@ -232,18 +232,29 @@ def get_latest_communications(issue_names):
         import json
         for comm in communications:
             issue_name = comm.reference_name
-            if issue_name not in latest_communications:
-                # This is the latest communication for this issue (due to ORDER BY creation DESC)
-                if comm._seen:
-                    try:
-                        seen_list = json.loads(comm._seen) if isinstance(comm._seen, str) else comm._seen
-                    except Exception:
+            
+            # Initialize seen_list first
+            seen_list = []
+            
+            if comm._seen:
+                try:
+                    seen_list = json.loads(comm._seen) if isinstance(comm._seen, str) else comm._seen
+                    # Ensure seen_list is a list
+                    if not isinstance(seen_list, list):
                         seen_list = []
+                except Exception:
+                    seen_list = []
 
-                is_readed = frappe.session.user in seen_list
-                if not is_readed:
-                        unread_count += 1
+            is_readed = frappe.session.user in seen_list
 
+            print(seen_list , ": ============== seen_list",is_readed, f"Issue: {issue_name}")
+
+            # Count all unread communications
+            if not is_readed:
+                    unread_count += 1
+            
+            # Store only the latest communication for each issue (first one due to ORDER BY creation DESC)
+            if issue_name not in latest_communications:        
                 latest_communications[issue_name] = {
                     'subject': comm.subject,
                     'content': comm.content[:500] if comm.content else '',  # Limit content length
@@ -251,13 +262,13 @@ def get_latest_communications(issue_names):
                     'creation': comm.creation,
                     'sender': comm.sender,
                     'recipients': comm.recipients,
-                    'seen': frappe.session.user in seen_list
+                    'seen': is_readed
                 }
-        return latest_communications,unread_count
+        return latest_communications, unread_count
         
     except Exception as e:
         frappe.log_error(f"Error fetching communications: {str(e)}")
-        return {}
+        return {}, 0
 
 
 def convert_filter_value(field, value, operator):
@@ -711,7 +722,7 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
         
         # Get latest communications for all issues in batch
         issue_names = [issue.name for issue in issues]
-        latest_communications = get_latest_communications(issue_names)
+        latest_communications, _ = get_latest_communications(issue_names)
         
         # For each issue, fetch the custom_users_assigned child table data and tags
         for issue in issues:
@@ -1050,7 +1061,7 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
             
             # Get latest communications and unseen counts for all issues in batch
             issue_names = [issue.name for issue in issues]
-            latest_communications = get_latest_communications(issue_names)
+            latest_communications, _ = get_latest_communications(issue_names)
             
             # Add child table data and tags for each issue
             for issue in issues:
@@ -1480,10 +1491,6 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
                 ignore_permissions=False
             )
         
-        # Get latest communications for all issues in batch
-        issue_names = [issue.name for issue in issues]
-        latest_communications ,unread_count= get_latest_communications(issue_names)
-        
         # Add child table data and tags for each issue
         for issue in issues:
             # Get child table data for custom_users_assigned
@@ -1507,9 +1514,20 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             )
             issue["_user_tags"] = [tag.tag for tag in tags] if tags else []
             
-            # Add latest communication data
-            issue["latest_communication"] = latest_communications.get(issue.name)
-            issue["unread_count"] = unread_count
+            # Check if current user is assigned to this issue
+            is_user_assigned = any(
+                assignment.user_assigned == frappe.session.user
+                for assignment in user_assignments
+            )
+            
+            # Only get communications and unread count if user is assigned
+            if is_user_assigned:
+                latest_communications, unread_count = get_latest_communications([issue.name])
+                issue["latest_communication"] = latest_communications.get(issue.name)
+                issue["unread_count"] = unread_count
+            else:
+                issue["latest_communication"] = None
+                issue["unread_count"] = 0
 
         
         

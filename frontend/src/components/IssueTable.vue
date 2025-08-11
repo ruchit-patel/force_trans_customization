@@ -57,7 +57,9 @@
 								<!-- Title with description tooltip and communication click -->
 								<div v-else-if="column.key === 'subject'" class="max-w-xs">
 									<div class="flex items-center gap-2">
-										<div class="font-medium truncate cursor-pointer" @click="openCommunicationDialog(issue)">
+										<!-- <div class="font-medium truncate cursor-pointer"
+										 @click="openCommunicationDialog(issue)"> -->
+										<div class="font-medium truncate cursor-pointer" 	@click.prevent="handleIssueClick(issue)">
 											{{ issue.subject }}
 										</div>
 										<Tooltip
