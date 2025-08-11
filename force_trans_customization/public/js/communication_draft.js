@@ -200,156 +200,92 @@ force_trans_customization.communication_draft = {
         // Override the get_earlier_reply function to format quoted content properly
         const original_get_earlier_reply = frappe.views.CommunicationComposer.prototype.get_earlier_reply;
         frappe.views.CommunicationComposer.prototype.get_earlier_reply = function () {
-            this.reply_set = false;
+            // First, get the result from the original Frappe function
+            const originalResult = original_get_earlier_reply.call(this);
+            
+            if (!originalResult) return "";
 
-            const last_email = this.last_email || (this.frm && this.frm.timeline.get_last_email(true));
-
-            if (!last_email) return "";
-            let last_email_content = last_email.original_comment || last_email.content;
-
-            // Clean up the HTML content properly
-            last_email_content = this.clean_html_content(last_email_content);
-
-            // clip last email for a maximum of 20k characters
-            // to prevent the email content from getting too large
-            if (last_email_content.length > 20 * 1024) {
-                last_email_content += "<div>" + __("Message clipped") + "</div>" + last_email_content;
-                last_email_content = last_email_content.slice(0, 20 * 1024);
-            }
-
-            const communication_date = frappe.datetime.global_date_format(
-                last_email.communication_date || last_email.creation
-            );
-
-            this.reply_set = true;
-
-            return `
-                <div><br></div>
-                <div class="gmail_quote">
-                    <div class="gmail_attr">
-                        ${__("On {0}, {1} wrote:", [communication_date, last_email.sender])}
-                    </div>
-                    <blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex;">
-                        ${last_email_content}
-                    </blockquote>
-                </div>
-            `;
+            // Debug logging to understand the structure
+            console.log("Original result:", originalResult);
+            
+            // Since the problematic blockquotes are created later, let's clean the content differently
+            // We'll focus on cleaning excessive br tags and whitespace from the original result
+            const cleanedResult = this.clean_excessive_breaks(originalResult);
+            
+            console.log("Cleaned result:", cleanedResult);
+            
+            return cleanedResult;
         };
 
-        // New function to clean HTML content
-        frappe.views.CommunicationComposer.prototype.clean_html_content = function (html) {
+        // New function to clean excessive breaks and whitespace
+        frappe.views.CommunicationComposer.prototype.clean_excessive_breaks = function (html) {
+            if (!html) return "";
+
+            let cleaned = html;
+            
+            // Remove excessive consecutive <br> tags (more than 2 becomes 2)
+            cleaned = cleaned.replace(/(<br\s*\/?>[\s\r\n]*){3,}/gi, '<br><br>');
+            
+            // Clean up excessive whitespace between elements
+            cleaned = cleaned.replace(/>\s{2,}</g, '><');
+            
+            // Remove empty blockquotes that might contain only breaks
+            cleaned = cleaned.replace(/<blockquote[^>]*>[\s\r\n]*(<br\s*\/?>[\s\r\n]*)*[\s\r\n]*<\/blockquote>/gi, '');
+            
+            // Clean up any remaining excessive line breaks within blockquotes
+            cleaned = cleaned.replace(/<blockquote([^>]*)>([\s\S]*?)<\/blockquote>/gi, function(match, attrs, content) {
+                // Clean content inside blockquote
+                let cleanContent = content.replace(/(<br\s*\/?>[\s\r\n]*){3,}/gi, '<br><br>');
+                // Remove leading/trailing breaks in blockquote
+                cleanContent = cleanContent.replace(/^[\s\r\n]*(<br\s*\/?>[\s\r\n]*)+/gi, '');
+                cleanContent = cleanContent.replace(/(<br\s*\/?>[\s\r\n]*)+[\s\r\n]*$/gi, '');
+                
+                return `<blockquote${attrs}>${cleanContent}</blockquote>`;
+            });
+            
+            return cleaned.trim();
+        };
+
+        // Clean problematic blockquotes from editor content
+        frappe.views.CommunicationComposer.prototype.clean_editor_blockquotes = function (html) {
             if (!html) return "";
 
             // Create a temporary div to parse HTML
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
 
-            // Remove table elements that cause unwanted formatting
-            const tablesToRemove = tempDiv.querySelectorAll('table, tbody, thead, tr, td, th');
-            tablesToRemove.forEach(el => {
-                // Replace table cells with their text content and line break
-                if (el.tagName === 'TD' || el.tagName === 'TH') {
-                    const textContent = el.textContent.trim();
-                    if (textContent) {
-                        el.outerHTML = textContent + '\n';
-                    } else {
-                        el.remove();
-                    }
-                } else {
-                    // For other table elements, just unwrap them
-                    while (el.firstChild) {
-                        el.parentNode.insertBefore(el.firstChild, el);
-                    }
-                    el.remove();
-                }
-            });
-
-            // Convert block elements to preserve line breaks
-            const blockElements = tempDiv.querySelectorAll('div, p, br');
-            blockElements.forEach(el => {
-                if (el.tagName === 'BR') {
-                    el.outerHTML = '\n';
-                } else if (el.tagName === 'DIV' || el.tagName === 'P') {
-                    // Add line break after block elements
-                    const textContent = el.textContent.trim();
-                    if (textContent) {
-                        el.outerHTML = textContent + '\n';
-                    } else {
-                        el.remove();
-                    }
-                }
-            });
-
-            // Handle blockquotes specially to preserve structure
+            // Find blockquotes with problematic content
             const blockquotes = tempDiv.querySelectorAll('blockquote');
-            blockquotes.forEach(blockquote => {
-                const textContent = blockquote.textContent.trim();
-                if (textContent) {
-                    blockquote.outerHTML = textContent + '\n';
-                } else {
-                    blockquote.remove();
+            
+            blockquotes.forEach((blockquote) => {
+                const innerHTML = blockquote.innerHTML;
+                
+                // Check if blockquote contains only problematic elements
+                const hasOnlyProblematicContent = /^[\s\r\n]*(<br\s*\/?>|<span[^>]*>[\s\u00A0\uFEFF]*<\/span>|&#xFEFF;|\s)*[\s\r\n]*$/i.test(innerHTML);
+                
+                if (hasOnlyProblematicContent) {
+                    // Check if this is one of many consecutive empty blockquotes
+                    let consecutiveEmpty = 1;
+                    let next = blockquote.nextElementSibling;
+                    
+                    while (next && next.tagName === 'BLOCKQUOTE') {
+                        const nextInner = next.innerHTML;
+                        if (/^[\s\r\n]*(<br\s*\/?>|<span[^>]*>[\s\u00A0\uFEFF]*<\/span>|&#xFEFF;|\s)*[\s\r\n]*$/i.test(nextInner)) {
+                            consecutiveEmpty++;
+                            next = next.nextElementSibling;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // If more than 2 consecutive empty blockquotes, remove the excess
+                    if (consecutiveEmpty > 2) {
+                        blockquote.remove();
+                    }
                 }
             });
 
-            // Remove other complex elements that can cause formatting issues
-            const complexElements = tempDiv.querySelectorAll('iframe, object, embed, style, script');
-            complexElements.forEach(el => el.remove());
-
-            // Get the text content and clean it up
-            let content = tempDiv.textContent || tempDiv.innerText || "";
-
-            // Clean up excessive whitespace while preserving line breaks
-            content = content
-                .replace(/[ \t]+/g, ' ')        // Multiple spaces/tabs to single space
-                .replace(/\n{3,}/g, '\n\n')     // More than 2 line breaks to 2
-                .replace(/^\s+|\s+$/gm, '')     // Remove leading/trailing spaces from lines
-                .trim();                        // Remove leading/trailing whitespace
-
-            // Ensure email headers (On [date]...) start on new lines
-            // First handle cases where there's text immediately before "On"
-            content = content.replace(/([a-zA-Z0-9!.\-\s])On\s+(\d{1,2}(st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|\w{3})\s+\d{4})/g, '$1\nOn $2');
-
-            // Also handle Gmail-style email headers "On ... at ... wrote:"
-            content = content.replace(/([a-zA-Z0-9!.\-\s])On\s+([A-Z][a-z]{2},\s+[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s+(AM|PM))/g, '$1\nOn $2');
-
-            // Ensure "Sent via" also starts on new line
-            content = content.replace(/([a-zA-Z0-9!.\-\s])(Sent via)/g, '$1\n$2');
-
-            // Remove duplicate "Sent via ERPNext" signatures (keep only the first one)
-            const sentViaRegex = /Sent via\s*ERPNext/gi;
-            const matches = content.match(sentViaRegex);
-            if (matches && matches.length > 1) {
-                // Replace all occurrences except the first one
-                let count = 0;
-                content = content.replace(sentViaRegex, function (match) {
-                    count++;
-                    return count === 1 ? match : '';
-                });
-            }
-
-            // Clean up any extra line breaks left by removing signatures
-            content = content.replace(/\n{3,}/g, '\n\n');
-
-            // Convert back to HTML with proper line breaks
-            content = content.replace(/\n/g, '<br>');
-
-            return content;
-        };
-
-        frappe.views.CommunicationComposer.prototype.html2text = function (html) {
-            // convert HTML to text and try and preserve whitespace
-            html = html
-                .replace(/<\/div>/g, "<br></div>") // replace end of blocks
-                .replace(/<\/p>/g, "<br></p>") // replace end of paragraphs
-                .replace(/<br>/g, "\n");
-
-            const text = frappe.utils.html2text(html);
-
-            // Clean up excessive newlines and spacing
-            return text
-                .replace(/\n{3,}/g, "\n\n") // Replace 3+ consecutive newlines with 2
-                .replace(/ +/g, " ") // Replace multiple spaces with single space
-                .replace(/^\s+|\s+$/gm, ""); // Remove leading/trailing whitespace from each line
+            return tempDiv.innerHTML;
         };
 
         // Add method to show undo toast
