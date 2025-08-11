@@ -542,66 +542,27 @@ onMounted(() => {
       timestamp: new Date()
     })
     
-
+    // Only refresh stat cards - let the composable handle individual row updates
+    console.log('🔄 List updated event received - refreshing only stat cards')
+    
     try {
-      // 1. Refresh stat cards numbers using the exposed method
+      // Refresh stat cards numbers using the exposed method
       if (issueStatsRef.value && issueStatsRef.value.refreshStats) {
+        console.log('📊 Refreshing stat cards...')
         await issueStatsRef.value.refreshStats()
+        console.log('📊 Stat cards refreshed successfully')
       }
       
-      // 2. Refresh current view data using existing resource methods
-      if (isUsingStatFilter.value) {
-        
-        // Prepare current parameters
-        const currentParams = {
-          stat_type: currentStatFilter.value,
-          limit_page_length: itemsPerPage.value,
-          limit_start: (currentPage.value - 1) * itemsPerPage.value,
-          order_by: sortOrder.value,
-        }
-        
-        // Add current filters if any
-        if (complexFilters.value && complexFilters.value.length > 0) {
-          currentParams.filters = JSON.stringify(complexFilters.value)
-        }
-      
-        
-        // Use the existing resource reload methods for proper reactivity
-        await Promise.all([
-          statFilterResource.reload(currentParams),
-          statFilterCountResource.reload({
-            stat_type: currentStatFilter.value,
-            filters: complexFilters.value && complexFilters.value.length > 0 
-              ? JSON.stringify(complexFilters.value) 
-              : undefined
-          })
-        ])
-        
-        console.log('📋 Stat filter data refreshed successfully')
-      } else {
-        console.log('📋 Refreshing regular issues data...')
-        
-        // Refresh regular issues view
-        await Promise.all([
-          reloadIssues({
-            filters: JSON.stringify(complexFilters.value),
-            limit_page_length: itemsPerPage.value,
-            limit_start: (currentPage.value - 1) * itemsPerPage.value,
-            order_by: sortOrder.value,
-          }),
-          getIssuesCount(JSON.stringify(complexFilters.value))
-        ])
-      }
-      
-      console.log('✅ Successfully refreshed all data after websocket update')
+      console.log('✅ Stat cards refreshed after websocket update')
+      console.log('ℹ️  Individual row updates are handled automatically by the composable')
       
     } catch (error) {
-      console.error('❌ Error refreshing data after websocket update:', error)
+      console.error('❌ Error refreshing stat cards after websocket update:', error)
       // Show error notification
       addNotification({
         type: 'error',
         title: 'Refresh Error',
-        message: 'Failed to refresh data after update. Please refresh manually.',
+        message: 'Failed to refresh stat cards. Please refresh manually.',
         timestamp: new Date()
       })
     }
