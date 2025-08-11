@@ -228,10 +228,22 @@ def get_latest_communications(issue_names):
         
         # Group by issue and get the latest communication for each
         latest_communications = {}
+        unread_count = 0
+        import json
         for comm in communications:
             issue_name = comm.reference_name
             if issue_name not in latest_communications:
                 # This is the latest communication for this issue (due to ORDER BY creation DESC)
+                if comm._seen:
+                    try:
+                        seen_list = json.loads(comm._seen) if isinstance(comm._seen, str) else comm._seen
+                    except Exception:
+                        seen_list = []
+
+                is_readed = frappe.session.user in seen_list
+                if not is_readed:
+                        unread_count += 1
+
                 latest_communications[issue_name] = {
                     'subject': comm.subject,
                     'content': comm.content[:500] if comm.content else '',  # Limit content length
@@ -239,10 +251,9 @@ def get_latest_communications(issue_names):
                     'creation': comm.creation,
                     'sender': comm.sender,
                     'recipients': comm.recipients,
-                    'seen': comm._seen
+                    'seen': frappe.session.user in seen_list
                 }
-        
-        return latest_communications
+        return latest_communications,unread_count
         
     except Exception as e:
         frappe.log_error(f"Error fetching communications: {str(e)}")
@@ -1471,7 +1482,7 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
         
         # Get latest communications for all issues in batch
         issue_names = [issue.name for issue in issues]
-        latest_communications = get_latest_communications(issue_names)
+        latest_communications ,unread_count= get_latest_communications(issue_names)
         
         # Add child table data and tags for each issue
         for issue in issues:
@@ -1498,6 +1509,9 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             
             # Add latest communication data
             issue["latest_communication"] = latest_communications.get(issue.name)
+            issue["unread_count"] = unread_count
+
+        
         
         return issues
         

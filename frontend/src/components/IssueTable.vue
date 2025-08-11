@@ -56,11 +56,22 @@
 
 								<!-- Title with description tooltip and communication click -->
 								<div v-else-if="column.key === 'subject'" class="max-w-xs">
-									<div class="font-medium truncate cursor-pointer" @click="openCommunicationDialog(issue)">
-										{{ issue.subject }}
+									<div class="flex items-center gap-2">
+										<div class="font-medium truncate cursor-pointer" @click="openCommunicationDialog(issue)">
+											{{ issue.subject }}
+										</div>
+										<Tooltip
+											v-if="issue.unread_count && issue.unread_count > 0"
+											:text="`${issue.unread_count} unread message${issue.unread_count > 1 ? 's' : ''}`"
+											placement="top"
+										>
+											<div class="bg-red-500 text-white text-xs px-2 py-1 rounded-full min-w-[20px] h-5 flex items-center justify-center cursor-help">
+												{{ issue.unread_count }}
+											</div>
+										</Tooltip>
 									</div>
-									<Tooltip 
-										v-if="issue.description" 
+									<Tooltip
+										v-if="issue.description"
 										:text="stripHtml(issue.description)"
 										placement="top"
 									>
@@ -69,7 +80,6 @@
 										</div>
 									</Tooltip>
 								</div>
-
 								<!-- Assignee email with truncation -->
 								<Tooltip 
 									v-if="column.key === 'raised_by'" 
@@ -647,7 +657,7 @@ export default {
 
 		// Static ListView options (memoized since they rarely change)
 		const listOptions = shallowRef({
-			showTooltip: true,
+			showTooltip: false,
 			selectable: true,
 			resizeColumn: false,
 			rowHeight: 60,
