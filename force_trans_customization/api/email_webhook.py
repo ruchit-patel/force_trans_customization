@@ -1190,30 +1190,11 @@ def get_user_group_from_email_account(email_account):
 
 def update_issue_status_on_customer_reply(issue_name):
     """
-    When an incoming customer email is linked to an existing Issue, adjust the Issue status:
-    1. If the Issue is in "Waiting on Customer" state -> move to "In Review"
-    2. If the Issue is in "In Transit" state -> move to "In Transit Unmanaged"
-    3. Update response status fields: Customer Awaits Reply = True, Awaiting Customer Response = False
-    Any other state is left unchanged.
+    When an incoming customer email is linked to an existing Issue, update response status fields:
+    Set "Customer Awaits Reply" to true and "Awaiting Customer Response" to false
     """
     try:
         issue_doc = frappe.get_doc("Issue", issue_name)
-
-        # Track if any changes were made
-        changes_made = False
-        status_change_message = ""
-
-        # Perform status transitions only if needed
-        if issue_doc.status == "Waiting on Customer":
-            new_status = "In Review"
-            issue_doc.status = new_status
-            status_change_message = f"Issue status automatically updated to '{new_status}' based on customer reply."
-            changes_made = True
-        elif issue_doc.status == "In Transit":
-            new_status = "In Transit Unmanaged"
-            issue_doc.status = new_status
-            status_change_message = f"Issue status automatically updated to '{new_status}' based on customer reply."
-            changes_made = True
 
         # Update response status fields - customer replied, so they now await our reply
         response_status_changed = False
@@ -1227,34 +1208,24 @@ def update_issue_status_on_customer_reply(issue_name):
             issue_doc.custom_is_response_awaited = 0
             response_status_changed = True
 
-        if response_status_changed:
-            changes_made = True
-
         # Save the issue if any changes were made
-        if changes_made:
+        if response_status_changed:
             issue_doc.save(ignore_permissions=True)
 
             # Log a comment on the Issue for traceability
-            comment_content = []
-            if status_change_message:
-                comment_content.append(status_change_message)
-            if response_status_changed:
-                comment_content.append("Response status updated: Customer now awaits reply.")
-            
-            if comment_content:
-                frappe.get_doc({
-                    "doctype": "Comment",
-                    "comment_type": "Info",
-                    "reference_doctype": "Issue",
-                    "reference_name": issue_name,
-                    "content": _(" ".join(comment_content)),
-                    "comment_by": "Administrator" if frappe.flags.in_test else frappe.session.user
-                }).insert(ignore_permissions=True)
+            frappe.get_doc({
+                "doctype": "Comment",
+                "comment_type": "Info",
+                "reference_doctype": "Issue",
+                "reference_name": issue_name,
+                "content": _("Response status updated: Customer now awaits reply."),
+                "comment_by": "Administrator" if frappe.flags.in_test else frappe.session.user
+            }).insert(ignore_permissions=True)
 
-            frappe.log(f"Issue {issue_name} updated after customer reply: Status={issue_doc.status}, Response Expected=True, Response Awaited=False")
+            frappe.log(f"Issue {issue_name} updated after customer reply: Response Expected=True, Response Awaited=False")
 
     except Exception as e:
         frappe.log_error(
-            message=f"Error updating status for Issue {issue_name}: {str(e)}",
-            title="Issue Status Update Error"
+            message=f"Error updating response status for Issue {issue_name}: {str(e)}",
+            title="Response Status Update Error"
         )

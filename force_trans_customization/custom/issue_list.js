@@ -18,10 +18,6 @@ frappe.listview_settings["Issue"] = {
 			listview.call_for_selected_items(method, { status: "In Review" });
 		});
 
-		listview.page.add_action_item(__("Set as Waiting on Customer"), function () {
-			listview.call_for_selected_items(method, { status: "Waiting on Customer" });
-		});
-
 		listview.page.add_action_item(__("Set as Confirmed"), function () {
 			listview.call_for_selected_items(method, { status: "Confirmed" });
 		});
@@ -46,10 +42,8 @@ frappe.listview_settings["Issue"] = {
 			// Primary Workflow States
 			"New": "blue",                      // 🔵 New issues - blue for fresh/attention needed
 			"In Review": "orange",              // 🟠 Under review - orange for active progress  
-			"Waiting on Customer": "yellow",    // 🟡 Customer action needed - yellow for pause/wait
 			"Confirmed": "purple",              // 🟣 Confirmed and validated - purple for approval
 			"In Transit": "light-blue",         // 🔷 Active transit - light blue for movement
-			"In Transit Unmanaged": "grey",     // ⚫ Unmanaged transit - grey for limited control
 			"Delivered": "green",               // 🟢 Successfully delivered - green for success
 			"Closed": "darkgreen",              // 🟢 Fully completed - dark green for finalization
 			

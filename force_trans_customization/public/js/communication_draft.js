@@ -157,8 +157,6 @@ force_trans_customization.communication_draft = {
                         if (r.message && r.message.success) {
                             communicationName = r.message.communication_name;
 
-                            // Update response status fields after sending email
-                            this.update_response_status_after_send();
 
                             if (isDelayedSending) {
                                 // Show toast with undo button for delayed sending
@@ -185,8 +183,6 @@ force_trans_customization.communication_draft = {
                 // This is a new email, use the original send action but intercept the result
                 const originalSendAction = original_send_action.bind(this);
 
-                // Update response status fields after sending email
-                this.update_response_status_after_send();
 
                 // Override the original send action to capture the communication name
                 original_send_action.call(this);
@@ -418,42 +414,6 @@ force_trans_customization.communication_draft = {
             });
         };
 
-        // Add method to update response status after sending email
-        frappe.views.CommunicationComposer.prototype.update_response_status_after_send = function () {
-            // Only update if this is an Issue doctype
-            if (this.frm && this.frm.doctype === "Issue") {
-                console.log("Updating response status after email send for Issue:", this.frm.docname);
-
-                // Set "Awaiting Customer Response" to true and "Customer Awaits Reply" to false
-                const updates = {
-                    custom_is_response_awaited: 1,
-                    custom_is_response_expected: 0
-                };
-
-                // Update the form values
-                this.frm.set_value('custom_is_response_awaited', 1);
-                this.frm.set_value('custom_is_response_expected', 0);
-
-                // Save the form silently
-                this.frm.save().then(() => {
-                    console.log("Response status updated successfully after email send");
-
-                    // Refresh the response status buttons if they exist
-                    if (typeof add_response_status_buttons === 'function') {
-                        add_response_status_buttons(this.frm);
-                    }
-
-                    // Show a subtle notification
-                    frappe.show_alert({
-                        message: __("Issue marked as awaiting customer response"),
-                        indicator: "blue"
-                    }, 3);
-                }).catch((error) => {
-                    console.error("Error updating response status after email send:", error);
-                    // Don't show error to user as this is a background operation
-                });
-            }
-        };
 
     },
 

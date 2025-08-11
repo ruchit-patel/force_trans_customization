@@ -36,7 +36,7 @@ QUERY-LEVEL PERMISSIONS (issue_query):
   - The user is individually assigned to the Issue via custom_users_assigned table, OR
   - The Issue has been explicitly shared with them
 - If a user has "Tracking Team" role profile, they will see Issues where:
-  - The Issue status is NOT "New", "In Review", or "Waiting on Customer", OR
+  - The Issue status is NOT "New", "In Review",  OR
   - The Issue has been explicitly shared with them
 - If a user has "Accounting Team" role profile, they will see Issues where:
   - The Issue status is "Delivered" or "Closed", OR
@@ -52,7 +52,7 @@ DOCUMENT-LEVEL PERMISSIONS (issue_has_permission):
   - They are individually assigned to the Issue via custom_users_assigned table
   - They get "Permission Denied" for Issues outside their groups and not individually assigned (unless shared)
 - If a user has "Tracking Team" role profile:
-  - They cannot access Issues with status "New", "In Review", or "Waiting on Customer"
+  - They cannot access Issues with status "New", "In Review"
   - They get "Permission Denied" for Issues with these statuses (unless shared)
 - If a user has "Accounting Team" role profile:
   - They can only access Issues with status "Delivered" or "Closed"
@@ -108,8 +108,8 @@ def issue_query(user):
             # Build the query condition for Tracking Team role profile
             conditions = []
             
-            # Add status condition - exclude New, In Review, Waiting on Customer
-            restricted_statuses = ["New", "In Review", "Waiting on Customer"]
+            # Add status condition - exclude New, In Review
+            restricted_statuses = ["New", "In Review"]
             status_conditions = "', '".join(restricted_statuses)
             conditions.append(f"`tabIssue`.status NOT IN ('{status_conditions}')")
             
@@ -214,7 +214,7 @@ def issue_has_permission(doc, user):
         elif user_role_profile == tracking_role_profile:
             # Check if the document status is NOT in restricted statuses
             doc_status = doc.get("status")
-            restricted_statuses = ["New", "In Review", "Waiting on Customer"]
+            restricted_statuses = ["New", "In Review"]
             if doc_status not in restricted_statuses:
                 return True
             else:
