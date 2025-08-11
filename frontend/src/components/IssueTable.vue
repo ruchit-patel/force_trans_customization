@@ -35,7 +35,14 @@
 			</ListHeader>
 
 			<ListRows>
-				<ListRow v-for="issue in transformedIssues" :key="issue.name" :row="issue">
+				<ListRow 
+					v-for="issue in transformedIssues" 
+					:key="issue.name" 
+					:row="issue"
+					:class="{
+						'bg-orange-50 hover:bg-orange-100': issue.custom_is_response_expected === 1
+					}"
+				>
 					<template #default="{ column, item }">
 						<ListRowItem :item="item" :align="column.align">
 							<template #prefix>

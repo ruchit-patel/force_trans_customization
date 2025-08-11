@@ -584,7 +584,8 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             "creation",
             "modified",
             "owner",
-            "description"
+            "description",
+            "custom_is_response_expected"
         ]
         
         # Process new filter structure from frontend
@@ -760,7 +761,8 @@ def get_single_issue_with_assignments(issue_name):
             "creation",
             "modified",
             "owner",
-            "description"
+            "description",
+            "custom_is_response_expected"
         ]
         
         # Get the single issue
@@ -1193,7 +1195,8 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             "creation",
             "modified",
             "owner",
-            "description"
+            "description",
+            "custom_is_response_expected"
         ]
         
         # Combine all issue name restrictions
