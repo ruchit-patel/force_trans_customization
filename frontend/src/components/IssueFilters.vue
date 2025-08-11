@@ -430,7 +430,6 @@ const fieldOptions = {
   status: [
     { value: 'New', label: 'New' },
     { value: 'In Review', label: 'In Review' },
-    { value: 'Waiting on Customer', label: 'Waiting on Customer' },
     { value: 'Confirmed', label: 'Confirmed' },
     { value: 'In Transit', label: 'In Transit' },
     { value: 'Delivered', label: 'Delivered' },

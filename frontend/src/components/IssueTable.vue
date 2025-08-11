@@ -207,10 +207,8 @@ const StatusBadge = {
 			const statusThemes = {
 				New: "blue", // 🔵 New issues - blue for fresh/attention needed
 				"In Review": "orange", // 🟠 Under review - orange for active progress
-				"Waiting on Customer": "yellow", // 🟡 Customer action needed - yellow for pause/wait
 				Confirmed: "purple", // 🟣 Confirmed and validated - purple for approval
 				"In Transit": "blue", // 🔷 Active transit - light-blue mapped to blue in Frappe UI
-				"In Transit Unmanaged": "gray", // ⚫ Unmanaged transit - grey for limited control
 				Delivered: "green", // 🟢 Successfully delivered - green for success
 				Closed: "green", // 🟢 Fully completed - darkgreen mapped to green in Frappe UI
 
@@ -384,10 +382,8 @@ export default {
 			const statusColors = {
 				New: "blue",
 				"In Review": "orange",
-				"Waiting on Customer": "yellow",
 				Confirmed: "purple",
 				"In Transit": "blue",
-				"In Transit Unmanaged": "gray",
 				Delivered: "green",
 				Closed: "green",
 				Open: "red",
@@ -539,10 +535,8 @@ export default {
 			return {
 				"bg-blue-500": statusValue === "New", // 🔵 New issues - blue for fresh/attention needed
 				"bg-orange-500": statusValue === "In Review", // 🟠 Under review - orange for active progress
-				"bg-yellow-500": statusValue === "Waiting on Customer", // 🟡 Customer action needed - yellow for pause/wait
 				"bg-purple-500": statusValue === "Confirmed", // 🟣 Confirmed and validated - purple for approval
 				"bg-blue-500": statusValue === "In Transit", // 🔷 Active transit - light-blue mapped to blue in Tailwind
-				"bg-gray-500": statusValue === "In Transit Unmanaged", // ⚫ Unmanaged transit - grey for limited control
 				"bg-green-500": statusValue === "Delivered", // 🟢 Successfully delivered - green for success
 				"bg-green-500": statusValue === "Closed", // 🟢 Fully completed - darkgreen mapped to green in Tailwind
 
@@ -570,10 +564,8 @@ export default {
 			const statusClasses = {
 				New: "bg-blue-100 text-blue-800",
 				"In Review": "bg-orange-100 text-orange-800",
-				"Waiting on Customer": "bg-yellow-100 text-yellow-800",
 				Confirmed: "bg-purple-100 text-purple-800",
 				"In Transit": "bg-blue-100 text-blue-800",
-				"In Transit Unmanaged": "bg-gray-100 text-gray-800",
 				Delivered: "bg-green-100 text-green-800",
 				Closed: "bg-green-100 text-green-800",
 				Open: "bg-red-100 text-red-800",

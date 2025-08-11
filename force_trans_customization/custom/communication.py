@@ -129,36 +129,27 @@ def get_company_email_domains():
 
 def update_issue_status_after_agent_reply(issue_name):
 	"""
-	Handle automatic status transitions when a support agent replies to a customer email.
-
-	1. If the Issue is currently "In Transit Unmanaged" → move it to "In Transit".
-	2. Otherwise, if the Issue is **not** already "Waiting on Customer" → move it to "Waiting on Customer".
+	Update response status fields after an agent sends an email to the customer.
+	Sets "Awaiting Customer Response" to true and "Customer Awaits Reply" to false.
 	"""
 	try:
 		issue_doc = frappe.get_doc("Issue", issue_name)
 
-		current_status = issue_doc.status
-		new_status = None
+		# Set the response status fields similar to the JS logic
+		issue_doc.custom_is_response_awaited = 1
+		issue_doc.custom_is_response_expected = 0
+		
+		issue_doc.save()
 
-		if current_status == "In Transit Unmanaged":
-			new_status = "In Transit"
-		elif current_status == "In Review":
-			new_status = "Waiting on Customer"
-
-		# Apply the change only if we determined a new status
-		if new_status and new_status != current_status:
-			issue_doc.status = new_status
-			issue_doc.save()
-
-			# Log the change for traceability
-			frappe.get_doc({
-				"doctype": "Comment",
-				"comment_type": "Info",
-				"reference_doctype": "Issue",
-				"reference_name": issue_name,
-				"content": _(f"Issue status automatically updated to '{new_status}' as an email was sent to the customer."),
-				"comment_by": frappe.session.user
-			}).insert(ignore_permissions=True)
+		# Log the change for traceability
+		frappe.get_doc({
+			"doctype": "Comment",
+			"comment_type": "Info",
+			"reference_doctype": "Issue",
+			"reference_name": issue_name,
+			"content": _("Issue marked as awaiting customer response"),
+			"comment_by": frappe.session.user
+		}).insert(ignore_permissions=True)
 
 	except Exception as e:
-		frappe.log_error(f"Error updating issue status for {issue_name}: {str(e)}", "Issue Status Update Error") 
+		frappe.log_error(f"Error updating response status for {issue_name}: {str(e)}", "Response Status Update Error") 
