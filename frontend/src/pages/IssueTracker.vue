@@ -34,7 +34,7 @@
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Statistics Cards -->
-      <IssueStats :issues="issues" :activeFilter="currentStatFilter" @filter-changed="handleStatFilterChanged" />
+      <IssueStats ref="issueStatsRef" :issues="issues" :activeFilter="currentStatFilter" @filter-changed="handleStatFilterChanged" />
 
       <!-- Search and Filters -->
       <IssueFilters v-model:searchQuery="searchQuery" v-model:filters="filters" :statusOptions="statusOptions"
@@ -94,7 +94,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch, shallowRef, markRaw } from "vue"
-import { Button, FeatherIcon } from "frappe-ui"
+import { Button, FeatherIcon, call } from "frappe-ui"
 import IssueFilters from "../components/IssueFilters.vue"
 import IssuePagination from "../components/IssuePagination.vue"
 import IssueStats from "../components/IssueStats.vue"
@@ -132,6 +132,9 @@ const {
 // State to track if we're using stat-based filtering
 const isUsingStatFilter = ref(false)
 const currentStatFilter = ref('team_tickets') // Default to team tickets
+
+// Reference to IssueStats component
+const issueStatsRef = ref(null)
 
 // Optimized refresh function using unified approach
 const refreshCurrentView = () => {
@@ -521,8 +524,6 @@ const nonSearchFilters = computed(() => {
 
 onMounted(() => {
   console.log('IssueTracker mounted, initializing with default view')
-  
-  // Start with default stat filter (Team Tickets) active
   isUsingStatFilter.value = true
   currentStatFilter.value = 'team_tickets'
   
@@ -530,14 +531,41 @@ onMounted(() => {
   applyCardFilterWithCustomFilters('team_tickets')
 
   // Listen for list update events from the composable
-  window.addEventListener('issueListUpdated', (event) => {
+  window.addEventListener('issueListUpdated', async (event) => {
     const { count, documents } = event.detail
+    
+    // Show notification
     addNotification({
       type: 'info',
       title: 'List Updated',
       message: `${count} issue${count > 1 ? 's' : ''} updated: ${documents.slice(0, 3).join(', ')}${documents.length > 3 ? '...' : ''}`,
       timestamp: new Date()
     })
+    
+    // Only refresh stat cards - let the composable handle individual row updates
+    console.log('🔄 List updated event received - refreshing only stat cards')
+    
+    try {
+      // Refresh stat cards numbers using the exposed method
+      if (issueStatsRef.value && issueStatsRef.value.refreshStats) {
+        console.log('📊 Refreshing stat cards...')
+        await issueStatsRef.value.refreshStats()
+        console.log('📊 Stat cards refreshed successfully')
+      }
+      
+      console.log('✅ Stat cards refreshed after websocket update')
+      console.log('ℹ️  Individual row updates are handled automatically by the composable')
+      
+    } catch (error) {
+      console.error('❌ Error refreshing stat cards after websocket update:', error)
+      // Show error notification
+      addNotification({
+        type: 'error',
+        title: 'Refresh Error',
+        message: 'Failed to refresh stat cards. Please refresh manually.',
+        timestamp: new Date()
+      })
+    }
   })
 })
 
