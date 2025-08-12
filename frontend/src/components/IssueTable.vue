@@ -61,19 +61,27 @@
 								</a>
 
 								<!-- Title with description -->
-								<div v-else-if="column.key === 'subject'" class="max-w-xs">
-									<div class="font-medium truncate" :title="issue.subject">{{ issue.subject }}</div>
-									<div v-if="issue.description" class="text-gray-500 text-sm mt-1 truncate"
-										:title="issue.description">
-										{{ stripHtml(issue.description) }}
-									</div>
+								<div v-else-if="column.key === 'subject'" class="max-w-xs cursor-pointer" 
+									@mouseenter="showIssueDetailsPopupFn($event, issue)"
+									@mouseleave="hideIssueDetailsPopup">
+									<div class="font-medium truncate">{{ issue.subject }}</div>
+
+									<template v-if="issue.description && issue.description.length > 0">
+										<div class="relative">
+											<div class="text-gray-500 text-sm mt-1 truncate max-w-xs">
+											{{ stripHtml(issue.description) }}
+											</div>
+										</div>
+									</template>
 								</div>
 
 								<!-- Assignee email with truncation -->
-								<span v-else-if="column.key === 'raised_by'"
-									class="text-sm font-medium text-gray-900 truncate block" :title="item || '-'">
-									{{ item || '-' }}
-								</span>
+								<Tooltip v-else-if="column.key === 'raised_by'" 
+									:text="`Assignee: ${item || 'Not assigned'}`">
+									<span class="text-sm font-medium text-gray-900 truncate block">
+										{{ item || '-' }}
+									</span>
+								</Tooltip>
 
 								<!-- Assigned Users as pills with hover popup -->
 								<div v-else-if="column.key === 'custom_users_assigned'" class="flex flex-wrap gap-1">
@@ -119,11 +127,13 @@
 								</div>
 
 								<!-- Status badge -->
-								<span v-else-if="column.key === 'status'"
-									:class="getStatusBadgeClass(issue.status?.label || issue.status || 'New')"
-									class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
-									{{ issue.status?.label || issue.status || 'New' }}
-								</span>
+								<Tooltip v-else-if="column.key === 'status'" 
+									:text="`Status: ${issue.status?.label || issue.status || 'New'}`">
+									<span :class="getStatusBadgeClass(issue.status?.label || issue.status || 'New')"
+										class="inline-flex px-2 py-1 text-xs font-semibold rounded-full">
+										{{ issue.status?.label || issue.status || 'New' }}
+									</span>
+								</Tooltip>
 
 
 
@@ -147,7 +157,7 @@
 		</ListView>
 
 		<!-- User Popup -->
-		<div v-if="showPopup && popupUser"
+		<div v-if="showPopup && popupUser && typeof popupUser === 'object'"
 			class="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-48" :style="{
 				left: popupPosition.x + 'px',
 				top: popupPosition.y + 'px',
@@ -163,6 +173,26 @@
 				</div>
 				<div class="text-xs text-gray-500 mt-1">
 					Assigned: {{ formatDate(popupUser.assigned_date) }}
+				</div>
+			</div>
+		</div>
+
+		<!-- Issue Details Popup (Subject + Description) -->
+		<div v-if="showIssueDetailsPopup && issueDetailsPopupData"
+			class="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-4 max-w-md" :style="{
+				left: issueDetailsPopupPosition.x + 'px',
+				top: issueDetailsPopupPosition.y + 'px',
+				transform: 'translateX(-50%) translateY(-100%)'
+			}">
+			<div class="text-sm">
+				<div class="font-bold text-gray-900 mb-3">
+					{{ issueDetailsPopupData.subject }}
+				</div>
+				<div v-if="issueDetailsPopupData.description" class="text-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto">
+					{{ stripHtml(issueDetailsPopupData.description) }}
+				</div>
+				<div v-else class="text-gray-400 italic">
+					No description available
 				</div>
 			</div>
 		</div>
@@ -188,7 +218,7 @@
 </template>
 
 <script>
-import { Avatar, Badge, Button, FeatherIcon, ListView } from "frappe-ui"
+import { Avatar, Badge, Button, FeatherIcon, ListView, Tooltip } from "frappe-ui"
 import ListHeader from "frappe-ui/src/components/ListView/ListHeader.vue"
 import ListHeaderItem from "frappe-ui/src/components/ListView/ListHeaderItem.vue"
 import ListRow from "frappe-ui/src/components/ListView/ListRow.vue"
@@ -284,6 +314,7 @@ export default {
 		ListSelectBanner,
 		StatusBadge,
 		PriorityBadge,
+		Tooltip,
 	},
 	props: {
 		issues: {
@@ -314,6 +345,11 @@ export default {
 		const showTagsPopup = ref(false)
 		const tagsPopupPosition = ref({ x: 0, y: 0 })
 		const tagsPopupData = ref(null)
+
+		// Issue details popup state management (for subject + description)
+		const showIssueDetailsPopup = ref(false)
+		const issueDetailsPopupPosition = ref({ x: 0, y: 0 })
+		const issueDetailsPopupData = ref(null)
 
 		// Helper methods
 		const getInitials = (name) => {
@@ -507,7 +543,7 @@ export default {
 
 		// Static ListView options (memoized since they rarely change)
 		const listOptions = shallowRef({
-			showTooltip: true,
+			showTooltip: false,
 			selectable: true,
 			resizeColumn: false,
 			rowHeight: 60,
@@ -640,6 +676,27 @@ export default {
 			tagsPopupData.value = null
 		}
 
+		// Issue details popup functions
+		const showIssueDetailsPopupFn = (event, issue) => {
+			if (!issue || !issue.subject) return
+
+			const rect = event.currentTarget.getBoundingClientRect()
+			issueDetailsPopupPosition.value = {
+				x: rect.left + rect.width / 2,
+				y: rect.top - 10,
+			}
+			issueDetailsPopupData.value = {
+				subject: issue.subject,
+				description: issue.description
+			}
+			showIssueDetailsPopup.value = true
+		}
+
+		const hideIssueDetailsPopup = () => {
+			showIssueDetailsPopup.value = false
+			issueDetailsPopupData.value = null
+		}
+
 		// Sorting functionality
 		const handleColumnSort = (field) => {
 			let newDirection = "asc"
@@ -752,6 +809,11 @@ export default {
 			tagsPopupData,
 			showTagsPopupFn,
 			hideTagsPopupFn,
+			showIssueDetailsPopup,
+			issueDetailsPopupPosition,
+			issueDetailsPopupData,
+			showIssueDetailsPopupFn,
+			hideIssueDetailsPopup,
 		}
 	},
 }
