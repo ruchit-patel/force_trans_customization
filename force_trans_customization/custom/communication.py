@@ -1,10 +1,87 @@
 import frappe
 from frappe import _
 
+def set_email_account_from_user_group(communication_doc):
+	"""
+	Set email account on communication document based on user's group association
+	"""
+	try:
+		# Get the current user (who is sending the email)
+		current_user = communication_doc.sender or frappe.session.user
+		
+		# Get user group email account
+		user_group_email_account = get_user_group_email_account_for_user(current_user)
+		
+		if user_group_email_account:
+			# Set the email account on the communication document
+			communication_doc.db_set('email_account', user_group_email_account, update_modified=False)
+			
+			# Also get the email account details to set the sender properly
+			email_account_doc = frappe.get_doc("Email Account", user_group_email_account)
+			
+			# Override the sender field with the email account's email
+			if email_account_doc.email_id:
+				communication_doc.db_set('sender', email_account_doc.email_id, update_modified=False)
+			
+			frappe.log(f"Set email account {user_group_email_account} and sender {email_account_doc.email_id} for communication {communication_doc.name}")
+		else:
+			frappe.log(f"No user group email account found for user {current_user}")
+			
+	except Exception as e:
+		frappe.log_error(
+			message=f"Error setting email account from user group: {str(e)}",
+			title="Communication Email Account Error"
+		)
+
+def get_user_group_email_account_for_user(user_email):
+	"""
+	Get the email account associated with the user's group
+	Returns the email account name if found, None otherwise
+	"""
+	try:
+		# Get all user groups where the current user is a member
+		user_groups = frappe.db.sql("""
+			SELECT ug.name, ug.custom_associated_email
+			FROM `tabUser Group` ug
+			INNER JOIN `tabUser Group Member` ugm ON ugm.parent = ug.name
+			WHERE ugm.user = %s AND ug.custom_associated_email IS NOT NULL AND ug.custom_associated_email != ''
+			ORDER BY ug.creation DESC
+			LIMIT 1
+		""", user_email, as_dict=True)
+		
+		if user_groups:
+			associated_email = user_groups[0].get('custom_associated_email')
+			
+			# Find the email account that matches this email address
+			email_account = frappe.db.get_value(
+				"Email Account",
+				{"email_id": associated_email, "enable_outgoing": 1},
+				"name"
+			)
+			
+			if email_account:
+				frappe.log(f"Found email account {email_account} for user {user_email} from user group {user_groups[0].get('name')}")
+				return email_account
+			else:
+				frappe.log(f"No enabled email account found for associated email: {associated_email}")
+		
+	except Exception as e:
+		frappe.log_error(
+			message=f"Error getting user group email account: {str(e)}",
+			title="User Group Email Account Error"
+		)
+	
+	return None
+
 def on_communication_after_insert(doc, method):
 	"""
 	Hook to update issue status when a support agent sends an email to customer
+	and set appropriate email account based on user group
 	"""
+	# Set email account based on user group for outgoing emails
+	if doc.communication_medium == "Email" and doc.sent_or_received == "Sent":
+		set_email_account_from_user_group(doc)
+	
 	if not doc.reference_doctype == "Issue":
 		return
 		
