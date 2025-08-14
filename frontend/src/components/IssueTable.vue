@@ -464,7 +464,8 @@ export default {
 					if (cached.originalStatus === issue.status && 
 					    cached.originalPriority === issue.priority &&
 					    cached.originalSubject === issue.subject &&
-					    cached.originalUsersAssigned === JSON.stringify(issue.custom_users_assigned)) {
+					    cached.originalUsersAssigned === JSON.stringify(issue.custom_users_assigned) &&
+					    cached.originalIsResponseExpected === issue.custom_is_response_expected) {
 						return cached.transformed
 					}
 				}
@@ -488,7 +489,8 @@ export default {
 					originalStatus: issue.status,
 					originalPriority: issue.priority,
 					originalSubject: issue.subject,
-					originalUsersAssigned: JSON.stringify(issue.custom_users_assigned)
+					originalUsersAssigned: JSON.stringify(issue.custom_users_assigned),
+					originalIsResponseExpected: issue.custom_is_response_expected
 				})
 				
 				return transformed
@@ -552,8 +554,7 @@ export default {
 				description: "Try adjusting your search or filter criteria",
 			},
 			onRowClick: (row) => {
-				// Handle row click
-				console.log("Row clicked:", row)
+				handleIssueClick(row)
 			},
 		})
 
