@@ -9,21 +9,21 @@ def set_email_account_from_user_group(communication_doc):
 		# Get the current user (who is sending the email)
 		current_user = communication_doc.sender or frappe.session.user
 		
-		# Get user group email account
-		user_group_email_account = get_user_group_email_account_for_user(current_user)
+		# Get user group email account data (optimized to return both name and email_id)
+		user_group_email_data = get_user_group_email_account_for_user(current_user)
 		
-		if user_group_email_account:
-			# Set the email account on the communication document
-			communication_doc.db_set('email_account', user_group_email_account, update_modified=False)
+		if user_group_email_data:
+			email_account_name = user_group_email_data['email_account_name']
+			email_id = user_group_email_data['email_id']
 			
-			# Also get the email account details to set the sender properly
-			email_account_doc = frappe.get_doc("Email Account", user_group_email_account)
+			# Set the email account on the communication document
+			communication_doc.db_set('email_account', email_account_name, update_modified=False)
 			
 			# Override the sender field with the email account's email
-			if email_account_doc.email_id:
-				communication_doc.db_set('sender', email_account_doc.email_id, update_modified=False)
+			if email_id:
+				communication_doc.db_set('sender', email_id, update_modified=False)
 			
-			frappe.log(f"Set email account {user_group_email_account} and sender {email_account_doc.email_id} for communication {communication_doc.name}")
+			frappe.log(f"Set email account {email_account_name} and sender {email_id} for communication {communication_doc.name}")
 		else:
 			frappe.log(f"No user group email account found for user {current_user}")
 			
@@ -36,34 +36,32 @@ def set_email_account_from_user_group(communication_doc):
 def get_user_group_email_account_for_user(user_email):
 	"""
 	Get the email account associated with the user's group
-	Returns the email account name if found, None otherwise
+	Returns a dict with email account name and email_id if found, None otherwise
 	"""
 	try:
-		# Get all user groups where the current user is a member
-		user_groups = frappe.db.sql("""
-			SELECT ug.name, ug.custom_associated_email
+		# Get all user groups where the current user is a member and join with email account
+		email_account_data = frappe.db.sql("""
+			SELECT ea.name as email_account_name, ea.email_id
 			FROM `tabUser Group` ug
 			INNER JOIN `tabUser Group Member` ugm ON ugm.parent = ug.name
-			WHERE ugm.user = %s AND ug.custom_associated_email IS NOT NULL AND ug.custom_associated_email != ''
+			INNER JOIN `tabEmail Account` ea ON ea.email_id = ug.custom_associated_email
+			WHERE ugm.user = %s 
+				AND ug.custom_associated_email IS NOT NULL 
+				AND ug.custom_associated_email != ''
+				AND ea.enable_outgoing = 1
 			ORDER BY ug.creation DESC
 			LIMIT 1
 		""", user_email, as_dict=True)
 		
-		if user_groups:
-			associated_email = user_groups[0].get('custom_associated_email')
-			
-			# Find the email account that matches this email address
-			email_account = frappe.db.get_value(
-				"Email Account",
-				{"email_id": associated_email, "enable_outgoing": 1},
-				"name"
-			)
-			
-			if email_account:
-				frappe.log(f"Found email account {email_account} for user {user_email} from user group {user_groups[0].get('name')}")
-				return email_account
-			else:
-				frappe.log(f"No enabled email account found for associated email: {associated_email}")
+		if email_account_data:
+			result = {
+				'email_account_name': email_account_data[0].get('email_account_name'),
+				'email_id': email_account_data[0].get('email_id')
+			}
+			frappe.log(f"Found email account {result['email_account_name']} with email {result['email_id']} for user {user_email}")
+			return result
+		else:
+			frappe.log(f"No enabled email account found for user {user_email}")
 		
 	except Exception as e:
 		frappe.log_error(
