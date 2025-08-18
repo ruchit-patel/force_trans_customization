@@ -951,10 +951,18 @@ def create_support_issue_from_communication(communication, sender_email, sender_
         # Create a new Issue
         issue = frappe.new_doc("Issue")
         
-        # Set basic fields
-        issue.subject = communication.subject or "Support Request"
+        # Set basic fields - truncate subject to 140 characters to avoid database errors
+        subject = communication.subject or "Support Request"
+        issue.subject = subject[:140] if len(subject) > 140 else subject
         issue.raised_by = sender_email
-        issue.description = communication.text_content or communication.content
+        # Use clean text content for issue description, strip HTML if needed
+        if communication.text_content:
+            issue.description = communication.text_content
+        elif communication.content:
+            # Strip HTML tags from content to get clean text
+            issue.description = strip_html_tags(communication.content)
+        else:
+            issue.description = ""
         issue.status = "New"
         issue.priority = get_default_priority()
         issue.issue_type = get_default_issue_type()

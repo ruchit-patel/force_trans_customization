@@ -77,7 +77,7 @@
 
 								<!-- Assignee email with truncation -->
 								<Tooltip v-else-if="column.key === 'raised_by'" 
-									:text="`Assignee: ${item || 'Not assigned'}`">
+									:text="`Raised By: ${item || 'Not assigned'}`">
 									<span class="text-sm font-medium text-gray-900 truncate block">
 										{{ item || '-' }}
 									</span>
@@ -518,7 +518,7 @@ export default {
 				sortable: true,
 			},
 			{
-				label: "Assignee",
+				label: "Raised By",
 				key: "raised_by",
 				width: "150px",
 				sortable: true,
@@ -526,7 +526,7 @@ export default {
 			{
 				label: "Assigned Users",
 				key: "custom_users_assigned",
-				width: "180px",
+				width: "150px",
 				sortable: false,
 			},
 			{
@@ -538,7 +538,7 @@ export default {
 			{
 				label: "Created At",
 				key: "creation",
-				width: "120px",
+				width: "100px",
 				sortable: true,
 			},
 		])
