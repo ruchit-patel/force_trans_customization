@@ -468,6 +468,47 @@ def clean_email_content(content):
     return content
 
 
+def clean_html_content_for_issue(html_content):
+    """
+    Thoroughly clean HTML content for issue description by removing all HTML tags, CSS, and scripts
+    """
+    if not html_content:
+        return ""
+    
+    import re
+    
+    # Remove CSS style blocks (including content between <style> tags)
+    html_content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Remove script blocks
+    html_content = re.sub(r'<script[^>]*>.*?</script>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Remove CSS media queries and other CSS declarations that might be outside style tags
+    html_content = re.sub(r'@media[^{]*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', '', html_content, flags=re.DOTALL)
+    
+    # Remove CSS rules that look like "property: value;" patterns
+    html_content = re.sub(r'[a-zA-Z-]+\s*:\s*[^;]+;', '', html_content)
+    
+    # Remove remaining CSS blocks with curly braces
+    html_content = re.sub(r'\{[^}]*\}', '', html_content)
+    
+    # Use Frappe's built-in function to strip HTML tags
+    clean_text = strip_html_tags(html_content)
+    
+    # Additional cleanup for any remaining CSS-like patterns
+    clean_text = re.sub(r'[a-zA-Z-]+\s*:\s*[^;]+;', '', clean_text)
+    
+    # Remove excessive whitespace and newlines
+    clean_text = re.sub(r'\s+', ' ', clean_text)
+    clean_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', clean_text)
+    
+    # Clean up common email artifacts
+    clean_text = re.sub(r'^\s*["\']?\s*', '', clean_text)  # Remove leading quotes and whitespace
+    clean_text = re.sub(r'\s*["\']?\s*$', '', clean_text)  # Remove trailing quotes and whitespace
+    
+    return clean_text.strip()
+
+
 def create_communication_record(message_id, timestamp, from_email, to_emails, 
                               subject, body_text, body_html, headers, email_account, in_reply_to=None):
     """
@@ -959,8 +1000,8 @@ def create_support_issue_from_communication(communication, sender_email, sender_
         if communication.text_content:
             issue.description = communication.text_content
         elif communication.content:
-            # Strip HTML tags from content to get clean text
-            issue.description = strip_html_tags(communication.content)
+            # Strip HTML tags and CSS from content to get clean text
+            issue.description = clean_html_content_for_issue(communication.content)
         else:
             issue.description = ""
         issue.status = "New"
