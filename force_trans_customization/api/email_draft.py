@@ -54,6 +54,11 @@ def save_draft(**kwargs):
         draft.email_template = kwargs.get("email_template") or ""
         draft.delivery_status = "Draft"
         
+        # Set in_reply_to if this is a reply
+        if kwargs.get("in_reply_to"):
+            draft.in_reply_to = kwargs.get("in_reply_to")
+            print(f"Set in_reply_to to {draft.in_reply_to} for draft {draft.name}")
+        
         # Set text content for search
         if draft.content:
             draft.text_content = frappe.utils.strip_html_tags(draft.content)
@@ -121,6 +126,12 @@ def send_draft(draft_name, form_values=None, selected_attachments=None):
             draft.sender = form_values.get("sender") or draft.sender
             draft.email_template = form_values.get("email_template") or draft.email_template
             draft.send_after = form_values.get("send_after") or draft.send_after
+            
+            # Preserve in_reply_to if it was set during draft creation
+            # Don't override it unless explicitly provided
+            if form_values.get("in_reply_to"):
+                draft.in_reply_to = form_values.get("in_reply_to")
+            
             # Set text content for search
             if draft.content:
                 draft.text_content = frappe.utils.strip_html_tags(draft.content)

@@ -46,6 +46,13 @@ force_trans_customization.communication_draft = {
 
                 console.log("Saving draft with draft_name:", draft_name);
 
+                // Check if this is a reply and get the parent communication ID
+                let in_reply_to = null;
+                if (this.is_a_reply && this.last_email && this.last_email.name) {
+                    in_reply_to = this.last_email.name;
+                    console.log("Setting in_reply_to for draft:", in_reply_to);
+                }
+
                 // Call our server-side save method
                 frappe.call({
                     method: "force_trans_customization.api.email_draft.save_draft",
@@ -59,7 +66,8 @@ force_trans_customization.communication_draft = {
                         bcc: form_values.bcc,
                         sender: form_values.sender,
                         email_template: form_values.email_template,
-                        draft_name: draft_name
+                        draft_name: draft_name,
+                        in_reply_to: in_reply_to
                     },
                     callback: function (r) {
                         if (r.message && r.message.success) {
