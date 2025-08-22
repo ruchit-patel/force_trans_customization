@@ -281,9 +281,6 @@ fixtures = [
 			"role": ["in","Support Team"]
 		}
 	},
-	{
-        "doctype": "User Group"
-    },
    { "doctype": "Property Setter"},
    {"doctype":"Custom Field"}
 ]
