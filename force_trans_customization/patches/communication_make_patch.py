@@ -8,6 +8,7 @@ import json
 # Store the original make function
 _original_make = email.make
 
+@frappe.whitelist()
 def patched_make(
     doctype=None,
     name=None,
