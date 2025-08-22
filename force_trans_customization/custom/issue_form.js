@@ -877,8 +877,8 @@ function inject_issue_labels_in_email_dialog(frm) {
                         const subjectField = this.dialog.fields_dict.subject;
                         if (!subjectField) return;
                         
-                        // Ensure issue ID is in subject line for all email types
-                        this.ensure_issue_id_in_subject();
+                        // Ensure issue ID is NOT in subject line for all email types
+                        this.ensure_issue_id_not_in_subject();
                         
                         // Find the subject field wrapper
                         const $subjectWrapper = $(subjectField.wrapper);
@@ -904,7 +904,7 @@ function inject_issue_labels_in_email_dialog(frm) {
             }
         }
 
-        ensure_issue_id_in_subject() {
+        ensure_issue_id_not_in_subject() {
             if (!this.frm || this.frm.doctype !== "Issue" || !this.dialog || !this.dialog.fields_dict.subject) {
                 return;
             }
@@ -912,46 +912,22 @@ function inject_issue_labels_in_email_dialog(frm) {
             const subjectField = this.dialog.fields_dict.subject;
             const currentSubject = subjectField.get_value() || '';
             const issueId = this.frm.doc.name;
-            const issueSubject = this.frm.doc.subject || '';
 
-            // Check if issue ID is already in the subject
-            const issueIdPattern = new RegExp(`\\(#${issueId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`);
-            if (issueIdPattern.test(currentSubject)) {
-                console.log('Issue ID already present in subject:', currentSubject);
-                return; // Already has issue ID
+            // Check if issue ID is present in the subject and remove it
+            const issueIdPattern = new RegExp(`\\s*\\(#${issueId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)\\s*`, 'g');
+            
+            if (!issueIdPattern.test(currentSubject)) {
+                console.log('Issue ID not present in subject:', currentSubject);
+                return; // No issue ID to remove
             }
 
-            let newSubject = '';
+            // Remove issue ID from subject
+            let newSubject = currentSubject.replace(issueIdPattern, ' ').trim();
+            
+            // Clean up any double spaces
+            newSubject = newSubject.replace(/\s+/g, ' ').trim();
 
-            // Handle different scenarios
-            if (!currentSubject) {
-                // New email - use issue subject with ID
-                newSubject = `${issueSubject} (#${issueId})`;
-            } else if (currentSubject.startsWith('Re: ')) {
-                // Reply - check if it already has proper format
-                const reContent = currentSubject.substring(4); // Remove "Re: "
-                if (reContent.includes(`(#${issueId})`)) {
-                    return; // Already properly formatted
-                }
-                
-                // Add issue ID to reply
-                if (reContent.trim() === issueSubject.trim()) {
-                    // Simple case: Re: [exact issue subject]
-                    newSubject = `Re: ${issueSubject} (#${issueId})`;
-                } else {
-                    // Complex case: Re: [modified subject] - append ID
-                    newSubject = `Re: ${reContent} (#${issueId})`;
-                }
-            } else if (currentSubject.startsWith('Fwd: ')) {
-                // Forward - similar logic
-                const fwdContent = currentSubject.substring(5); // Remove "Fwd: "
-                newSubject = `Fwd: ${fwdContent} (#${issueId})`;
-            } else {
-                // Other cases - append issue ID
-                newSubject = `${currentSubject} (#${issueId})`;
-            }
-
-            console.log('Updating subject from:', currentSubject, 'to:', newSubject);
+            console.log('Removing issue ID from subject. From:', currentSubject, 'to:', newSubject);
             subjectField.set_value(newSubject);
         }
     };
