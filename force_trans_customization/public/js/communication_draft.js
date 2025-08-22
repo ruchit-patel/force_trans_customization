@@ -188,19 +188,68 @@ force_trans_customization.communication_draft = {
                     }.bind(this)
                 });
             } else {
-                // This is a new email, use the original send action but intercept the result
-                const originalSendAction = original_send_action.bind(this);
+                // This is a new email - check if it's a reply and handle accordingly
+                if (this.is_a_reply && this.last_email && this.last_email.name) {
+                    // This is a reply, use our custom send method to handle in_reply_to
+                    let form_values = this.dialog.get_values();
+                    
+                    const selected_attachments = $.map(
+                        $(this.dialog.wrapper).find("[data-file-name]:checked"),
+                        function (element) {
+                            return $(element).attr("data-file-name");
+                        }
+                    );
 
+                    frappe.call({
+                        method: "force_trans_customization.api.communication_threading.create_reply_communication",
+                        args: {
+                            reference_doctype: this.frm.doctype,
+                            reference_name: this.frm.docname,
+                            recipients: form_values.recipients,
+                            sender: form_values.sender,
+                            subject: form_values.subject,
+                            content: form_values.content,
+                            cc: form_values.cc,
+                            bcc: form_values.bcc,
+                            reply_to_communication: this.last_email.name,
+                            send_email: true,
+                            email_template: form_values.email_template,
+                            attachments: selected_attachments,
+                            send_after: form_values.send_after
+                        },
+                        callback: function (r) {
+                            if (r.message && r.message.success) {
+                                if (isDelayedSending) {
+                                    this.show_undo_toast(r.message.name);
+                                } else {
+                                    frappe.show_alert(__("Email sent successfully"), 3);
+                                }
+                                
+                                this.dialog.hide();
+                                // Refresh timeline
+                                if (this.frm && this.frm.timeline) {
+                                    this.frm.timeline.refresh();
+                                }
+                            } else {
+                                frappe.msgprint({
+                                    title: __("Error"),
+                                    message: r.message ? r.message.message : __("Error sending email"),
+                                    indicator: "red"
+                                });
+                            }
+                        }.bind(this)
+                    });
+                } else {
+                    // This is not a reply, use the original send action
+                    original_send_action.call(this);
 
-                // Override the original send action to capture the communication name
-                original_send_action.call(this);
-
-                // If delayed sending is enabled, we need to find the communication that was just created
-                if (isDelayedSending) {
-                    // Wait a bit for the communication to be created, then find it
-                    setTimeout(function () {
-                        this.find_recent_communication_and_show_undo();
-                    }.bind(this), 1000);
+                    // If delayed sending is enabled, we need to find the communication that was just created
+                    if (isDelayedSending) {
+                        // Wait a bit for the communication to be created, then find it
+                        setTimeout(function () {
+                            this.find_recent_communication_and_show_undo();
+                        }.bind(this), 1000);
+                    }
                 }
             }
         };

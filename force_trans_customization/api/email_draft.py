@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 from frappe.utils import now_datetime, get_formatted_email
+from frappe.core.doctype.communication.email import get_string_between, get_message_id
 import json
 
 @frappe.whitelist()
@@ -33,7 +34,7 @@ def save_draft(**kwargs):
                 # Update existing draft
                 draft = frappe.get_doc("Communication", existing_draft)
             else:
-                # Create new draft
+                # Create new draft with essential fields (similar to standard make() function)
                 draft = frappe.new_doc("Communication")
                 draft.reference_doctype = kwargs.get("doctype")
                 draft.reference_name = kwargs.get("docname")
@@ -43,16 +44,42 @@ def save_draft(**kwargs):
                 draft.communication_medium = "Email"
                 draft.sent_or_received = "Sent"
                 draft.communication_date = now_datetime()
+                # Generate essential fields that are normally created during email sending
+                draft.message_id = get_string_between("<", get_message_id(), ">")
+                draft.has_attachment = 0  # Will be updated if attachments are added later
         
-        # Update draft content
+        # Ensure essential fields exist even for existing drafts (in case they were missing)
+        if not draft.message_id:
+            draft.message_id = get_string_between("<", get_message_id(), ">")
+        if not hasattr(draft, 'has_attachment') or draft.has_attachment is None:
+            draft.has_attachment = 0
+        
+        # Update draft content (with proper email formatting like standard make() function)
+        from frappe.utils import list_to_str
+        
         draft.subject = kwargs.get("subject") or "Draft Email"
         draft.content = kwargs.get("content") or ""
-        draft.recipients = kwargs.get("recipients") or ""
-        draft.cc = kwargs.get("cc") or ""
-        draft.bcc = kwargs.get("bcc") or ""
-        draft.sender = kwargs.get("sender") or get_formatted_email(frappe.session.user)
+        
+        # Format recipients, cc, bcc properly (like standard make() function)
+        recipients = kwargs.get("recipients") or ""
+        cc = kwargs.get("cc") or ""
+        bcc = kwargs.get("bcc") or ""
+        
+        draft.recipients = list_to_str(recipients) if isinstance(recipients, list) else recipients
+        draft.cc = list_to_str(cc) if isinstance(cc, list) else (cc or None)
+        draft.bcc = list_to_str(bcc) if isinstance(bcc, list) else (bcc or None)
+        
+        # Set sender and sender_full_name
+        sender = kwargs.get("sender") or get_formatted_email(frappe.session.user)
+        draft.sender = sender
+        draft.sender_full_name = kwargs.get("sender_full_name")  # Optional field
+        
         draft.email_template = kwargs.get("email_template") or ""
         draft.delivery_status = "Draft"
+        
+        # Set other optional fields that might be important
+        draft.read_receipt = kwargs.get("read_receipt")
+        draft.send_after = kwargs.get("send_after")
         
         # Set in_reply_to if this is a reply
         if kwargs.get("in_reply_to"):
