@@ -86,7 +86,8 @@ def process_ses_email(email_data):
             return process_raw_email(email_data["raw_email"])
         
         # Extract email details from structured data
-        message_id = email_data.get("message_id") 
+        # NOTE: Don't use message_id from API data as it might be incorrect
+        # message_id = email_data.get("message_id")  # This is often wrong!
         timestamp = email_data.get("timestamp")
         from_email = email_data.get("from_email")
         to_emails = email_data.get("to_emails", [])
@@ -105,14 +106,13 @@ def process_ses_email(email_data):
         # Find matching Email Account
         email_account = find_matching_email_account(primary_recipient, to_emails)
         
+        # Extract proper Message-ID from email headers (not from API data!)
+        message_id = extract_proper_message_id(headers)
+        
         # Extract In-Reply-To header for reply detection
         in_reply_to = headers.get('In-Reply-To', '') or headers.get('in-reply-to', '')
         if in_reply_to:
             in_reply_to = get_string_between('<', in_reply_to, '>')
-        
-        # Clean message_id
-        if message_id:
-            message_id = get_string_between('<', message_id, '>')
         
         # Create Communication record
         communication = create_communication_record(
@@ -246,9 +246,13 @@ def process_raw_email(raw_email_content):
         if in_reply_to:
             in_reply_to = get_string_between('<', in_reply_to, '>')
         
-        # Extract message_id properly
+        # Extract message_id properly using our enhanced function
         if message_id:
-            message_id = get_string_between('<', message_id, '>')
+            # Use the same function for consistency
+            message_id = extract_proper_message_id({'Message-ID': message_id})
+        else:
+            # Try to extract from all headers
+            message_id = extract_proper_message_id(dict(msg.items()))
         
         # Create Communication record
         communication = create_communication_record(
@@ -280,6 +284,52 @@ def process_raw_email(raw_email_content):
         )
         raise
 
+
+def extract_proper_message_id(headers):
+    """
+    Extract the proper Message-ID from email headers.
+    This looks for the actual Message-ID header that looks like:
+    Message-ID: <CACCeexFCJQ5BEoeu_+79T+c6AzFg3waURQMjr-OHUFLra_iQNA@mail.gmail.com>
+    """
+    try:
+        # Try different case variations of Message-ID header
+        message_id_variations = [
+            'Message-ID',
+            'message-id', 
+            'MESSAGE-ID',
+            'Message-Id'
+        ]
+        
+        message_id = ""
+        for header_name in message_id_variations:
+            if header_name in headers:
+                message_id = headers[header_name]
+                break
+        
+        if not message_id:
+            frappe.log("Warning: No Message-ID header found in email")
+            return ""
+        
+        # Clean the message ID - remove < > brackets if present
+        cleaned_id = get_string_between('<', message_id, '>')
+        if not cleaned_id:
+            # If no brackets found, use the full string but clean it
+            cleaned_id = message_id.strip()
+        
+        frappe.log(f"DEBUG: Raw Message-ID header: {message_id}")
+        frappe.log(f"DEBUG: Extracted Message-ID: {cleaned_id}")
+        
+        # Validate that the Message-ID looks reasonable
+        if cleaned_id and '@' in cleaned_id:
+            frappe.log(f"SUCCESS: Valid Message-ID extracted: {cleaned_id}")
+        elif cleaned_id:
+            frappe.log(f"WARNING: Message-ID doesn't contain '@': {cleaned_id}")
+        
+        return cleaned_id
+        
+    except Exception as e:
+        frappe.log_error(f"Error extracting Message-ID from headers: {str(e)}")
+        return ""
 
 def decode_email_header(header_value):
     """

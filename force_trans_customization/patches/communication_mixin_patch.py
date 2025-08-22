@@ -33,8 +33,11 @@ def patched_sendmail_input_dict(
         try:
             parent_comm = frappe.get_doc("Communication", self.in_reply_to)
             if parent_comm.message_id:
-                result["in_reply_to"] = parent_comm.message_id
-                frappe.log(f"Added in_reply_to to sendmail dict: {parent_comm.message_id}")
+                message_id_with_brackets = "<"+parent_comm.message_id+">"
+                result["in_reply_to"] = message_id_with_brackets
+                
+                
+                frappe.log(f"Added in_reply_to and References header to sendmail dict: {parent_comm.message_id}")
         except frappe.DoesNotExistError:
             frappe.log(f"Parent communication {self.in_reply_to} not found for in_reply_to")
     
