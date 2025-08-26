@@ -35,7 +35,7 @@
             theme="gray"
             variant="outline"
             size="sm"
-            :class="{ 'bg-blue-50 text-blue-600 border-blue-200': currentPage === 1 }"
+:class="{ 'bg-blue-50 text-blue-600 border-blue-200': currentPage !== 1, 'pagination-active-btn': currentPage === 1 }"
             @click="goToPage(1)"
           >
             1
@@ -51,7 +51,7 @@
             theme="gray"
             variant="outline"
             size="sm"
-            :class="{ 'bg-blue-50 text-blue-600 border-blue-200': currentPage === page }"
+:class="{ 'bg-blue-50 text-blue-600 border-blue-200': currentPage !== page, 'pagination-active-btn': currentPage === page }"
             @click="goToPage(page)"
           >
             {{ page }}
@@ -66,7 +66,7 @@
             theme="gray"
             variant="outline"
             size="sm"
-            :class="{ 'bg-blue-50 text-blue-600 border-blue-200': currentPage === totalPages }"
+:class="{ 'bg-blue-50 text-blue-600 border-blue-200': currentPage !== totalPages, 'pagination-active-btn': currentPage === totalPages }"
             @click="goToPage(totalPages)"
           >
             {{ totalPages }}
@@ -277,3 +277,34 @@ const handleItemsPerPageChange = () => {
 	})
 }
 </script>
+
+<style scoped>
+.pagination-active-btn {
+  background-color: #2563eb !important;
+  color: white !important;
+  border-color: #2563eb !important;
+  font-weight: bold !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  transform: translateY(-1px) !important;
+}
+
+.pagination-active-btn:hover {
+  background-color: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Override Frappe UI button styles */
+:deep(.pagination-active-btn) {
+  background-color: #2563eb !important;
+  color: white !important;
+  border-color: #2563eb !important;
+  font-weight: bold !important;
+}
+
+:deep(.pagination-active-btn:hover) {
+  background-color: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+}
+</style>

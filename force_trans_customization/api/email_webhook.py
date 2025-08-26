@@ -1014,6 +1014,73 @@ def validate_webhook_signature(payload, signature, secret):
     return signature == expected_signature
 
 
+
+
+
+import re, html
+
+def clean_email_for_issue(raw: str) -> str:
+    """
+    Strip CSS/HTML and return readable email text.
+    - Removes <style>...</style>
+    - Removes <div>, <span>, <em> and their inner content
+    - Removes all HTML tags
+    - Drops CSS-like lines (selectors, properties, @media)
+    - Unescapes HTML entities
+    - Normalizes blank lines
+    """
+    if not raw:
+        return ""
+
+    text = raw
+
+    # 1) Remove <style>...</style> blocks
+    text = re.sub(r"<style.*?>.*?</style>", "", text, flags=re.IGNORECASE | re.DOTALL)
+
+    # 2) Remove "junk wrapper" tags completely including their inner text
+    # (div, span, em)
+    text = re.sub(r"<(?:div|span|em)[^>]*>.*?</(?:div|span|em)>", "", text, flags=re.IGNORECASE | re.DOTALL)
+
+    # 3) Remove any remaining HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # 4) Split into lines and drop CSS-like lines
+    lines = text.splitlines()
+    css_prop_re = re.compile(r"^\s*[a-zA-Z-]+\s*:\s*[^;]+;\s*$")   # e.g., color: #000;
+    selector_re = re.compile(r"[{}]")                              # contains { or }
+    media_re = re.compile(r"^\s*@media\b", re.IGNORECASE)
+
+    kept = []
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            kept.append("")
+            continue
+
+        if media_re.search(line_stripped) or selector_re.search(line_stripped) or css_prop_re.match(line_stripped):
+            continue
+
+        # Drop leftover selector-like lines (.class .subclass ...)
+        if re.match(r"^\.[\w\-\s.,]+$", line_stripped):
+            continue
+
+        kept.append(line)
+
+    text = "\n".join(kept)
+
+    # 5) Unescape HTML entities
+    text = html.unescape(text)
+
+    # 6) Trim whitespace
+    text = "\n".join(l.strip() for l in text.splitlines())
+
+    # 7) Collapse 3+ blank lines -> 2, and multiple spaces -> single
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
+
+
 def create_support_issue_from_communication(communication, sender_email, sender_name, to_emails):
     """
     Create a Support Issue from the Communication record with enhanced reply detection
@@ -1048,10 +1115,10 @@ def create_support_issue_from_communication(communication, sender_email, sender_
         issue.raised_by = sender_email
         # Use clean text content for issue description, strip HTML if needed
         if communication.text_content:
-            issue.description = communication.text_content
+            issue.description = clean_email_for_issue(communication.text_content)
         elif communication.content:
             # Strip HTML tags and CSS from content to get clean text
-            issue.description = clean_html_content_for_issue(communication.content)
+            issue.description = clean_email_for_issue(communication.content)
         else:
             issue.description = ""
         issue.status = "New"
