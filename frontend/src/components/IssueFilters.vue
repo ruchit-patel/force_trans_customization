@@ -286,9 +286,10 @@
                       <!-- Selected Tags Display -->
                       <div v-if="getTags(filter.value).length > 0" class="flex flex-wrap gap-1 mb-2 p-2 bg-white rounded-md border border-gray-200">
                         <span v-for="(tag, idx) in getTags(filter.value)" :key="idx"
-                          class="inline-flex items-center px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full border border-purple-200 hover:bg-purple-200 transition-colors">
+                          :style="getTagStyle(tag)"
+                          class="inline-flex items-center px-2 py-1 text-xs rounded-full border transition-colors">
                           {{ tag }}
-                          <button @click="removeTag(filter, idx)" class="ml-1 text-purple-600 hover:text-red-600 transition-colors">
+                          <button @click="removeTag(filter, idx)" class="ml-1 hover:text-red-600 transition-colors">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
@@ -387,6 +388,7 @@
 import { Dropdown, Combobox, Autocomplete } from "frappe-ui"
 import { computed, ref, watch, onMounted, onUnmounted } from "vue"
 import CustomSearchBox from "./CustomSearchBox.vue"
+import { getTagColor } from '../data/issues.js'
 
 // Props
 const props = defineProps({
@@ -675,6 +677,41 @@ const addTagFromSuggestion = (filter, tagSuggestion) => {
   
   filter.tagInput = ''
   filter.tagSuggestions = []
+}
+
+// Tag styling function using exact backend category colors
+const getTagStyle = (tag) => {
+  const categoryColor = getTagColor(tag) // This returns the exact category_color from Tag Category
+  
+  if (categoryColor) {
+    // Use the exact category color for the pill
+    const hexColor = categoryColor.startsWith('#') ? categoryColor : `#${categoryColor}`
+    
+    // Convert hex to RGB for opacity variations
+    const hex = hexColor.replace('#', '')
+    const r = parseInt(hex.substr(0, 2), 16)
+    const g = parseInt(hex.substr(2, 2), 16)
+    const b = parseInt(hex.substr(4, 2), 16)
+
+    // Create color variations based on the exact category color
+    const bgColor = `rgba(${r}, ${g}, ${b}, 0.15)` // Light background using category color
+    const borderColor = hexColor // Exact category color for border
+
+    return {
+      backgroundColor: bgColor,
+      color: '#000000', // Always black text
+      borderColor: borderColor,
+      borderWidth: '1.5px'
+    }
+  }
+  
+  // Fallback to neutral gray if no category color mapping found
+  return {
+    backgroundColor: 'rgba(107, 114, 128, 0.1)',
+    color: '#000000', // Always black text
+    borderColor: 'rgba(107, 114, 128, 0.3)',
+    borderWidth: '1px'
+  }
 }
 
 // Link/Reference Helpers - Updated to use real API endpoints
