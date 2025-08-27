@@ -47,7 +47,7 @@ def execute():
     """Apply the patch to Communication mixin"""
     # Apply the monkey patch
     CommunicationEmailMixin.sendmail_input_dict = patched_sendmail_input_dict
-    frappe.log("Applied Communication mixin patch for in_reply_to support")
+    #frappe.log("Applied Communication mixin patch for in_reply_to support")
 
 # Auto-execute the patch when this module is imported
 execute()

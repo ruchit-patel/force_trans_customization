@@ -945,6 +945,7 @@ def create_file_document(filename, content, content_type, communication):
         file_doc.attached_to_doctype = "Communication"
         file_doc.attached_to_name = communication.name
         file_doc.folder = "Home/Attachments"
+        file_doc.is_private = 1
         
         # Save the file content
         if isinstance(content, bytes):

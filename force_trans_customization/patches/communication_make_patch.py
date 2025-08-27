@@ -117,7 +117,7 @@ def execute():
     """Apply the patch to the make function"""
     # Apply the monkey patch
     email.make = patched_make
-    frappe.log("Applied Communication make() patch for in_reply_to support")
+    # frappe.log("Applied Communication make() patch for in_reply_to support")
 
 # Auto-execute the patch when this module is imported
 execute()

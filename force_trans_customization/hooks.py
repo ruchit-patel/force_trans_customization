@@ -282,6 +282,8 @@ fixtures = [
 		}
 	},
    { "doctype": "Property Setter"},
-   {"doctype":"Custom Field"}
+   {"doctype":"Custom Field"},
+   {"doctype":"Custom DocPerm"},
+
 ]
 website_route_rules = [{'from_route': '/ui/<path:app_path>', 'to_route': 'ui'}, {'from_route': '/frontend/<path:app_path>', 'to_route': 'frontend'},]
