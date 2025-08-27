@@ -311,12 +311,11 @@
                         <input v-model="filter.tagInput" 
                           @input="handleTagSearch(filter, filter.tagInput)"
                           @keyup.enter="handleTagEnter(filter)"
-                          @keyup.comma="addTagFromInput(filter)"
                           @keydown.up.prevent="handleTagKeyNavigation(filter, 'up')"
                           @keydown.down.prevent="handleTagKeyNavigation(filter, 'down')"
                           @keydown.escape="clearTagSuggestions(filter)"
                           type="text" 
-                          placeholder="Search and select tags or type new ones..."
+                          placeholder="Search and select tags from dropdown..."
                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
                         
                         <!-- Loading indicator -->
@@ -350,7 +349,7 @@
                         </button>
                       </div>
                       
-                      <p class="text-xs text-gray-500 italic">Search existing tags or press Enter/comma to create new tags</p>
+                      <p class="text-xs text-gray-500 italic">Search existing tags and select from dropdown only</p>
                     </div>
                   </div>
 
@@ -593,19 +592,7 @@ const removeTag = (filter, index) => {
   filter.value = tags.join(', ')
 }
 
-const addTag = (filter) => {
-  if (!filter.tagInput || !filter.tagInput.trim()) return
-  
-  const newTag = filter.tagInput.replace(',', '').trim()
-  const currentTags = getTags(filter.value)
-  
-  if (newTag && !currentTags.includes(newTag)) {
-    currentTags.push(newTag)
-    filter.value = currentTags.join(', ')
-  }
-  
-  filter.tagInput = ''
-}
+// addTag function removed - now only allowing selection from dropdown
 
 // New helper functions for enhanced functionality
 const getDisplayValueForUser = (value, filter) => {
@@ -724,20 +711,7 @@ const handleTagSearch = async (filter, searchValue) => {
   }, 300) // 300ms debounce
 }
 
-const addTagFromInput = (filter) => {
-  if (!filter.tagInput || !filter.tagInput.trim()) return
-  
-  const newTag = filter.tagInput.replace(',', '').trim()
-  const currentTags = getTags(filter.value)
-  
-  if (newTag && !currentTags.includes(newTag)) {
-    currentTags.push(newTag)
-    filter.value = currentTags.join(', ')
-  }
-  
-  filter.tagInput = ''
-  filter.tagSuggestions = []
-}
+// addTagFromInput function removed - now only allowing selection from dropdown
 
 const addTagFromSuggestion = (filter, tagSuggestion) => {
   const currentTags = getTags(filter.value)
@@ -774,13 +748,12 @@ const handleTagKeyNavigation = (filter, direction) => {
 }
 
 const handleTagEnter = (filter) => {
+  // Only allow selection from dropdown suggestions
   if (filter.selectedTagIndex >= 0 && filter.tagSuggestions && filter.tagSuggestions[filter.selectedTagIndex]) {
     // Select the highlighted suggestion
     addTagFromSuggestion(filter, filter.tagSuggestions[filter.selectedTagIndex])
-  } else {
-    // Add from input text
-    addTagFromInput(filter)
   }
+  // Do not add custom tags from input text anymore
 }
 
 const clearTagSuggestions = (filter) => {
