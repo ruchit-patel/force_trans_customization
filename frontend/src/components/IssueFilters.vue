@@ -208,6 +208,7 @@
                         <!-- Simple select for priority field -->
                         <select v-if="filter.field === 'priority' || filter.field === 'status' || filter.field === 'issue_type'"
                           v-model="filter.value"
+                          @keydown.enter.prevent="$event.target.blur()"
                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400"
                         >
                           <option value="">Select {{ getFieldLabel(filter.field) }}...</option>
@@ -255,6 +256,10 @@
                           <input 
                             v-model="filter.searchValue" 
                             @input="handleLinkSearch(filter, filter.searchValue)"
+                            @keydown.up.prevent="handleLinkKeyNavigation(filter, 'up')"
+                            @keydown.down.prevent="handleLinkKeyNavigation(filter, 'down')"
+                            @keydown.enter.prevent="handleLinkEnter(filter)"
+                            @keydown.escape="clearLinkSuggestions(filter)"
                             type="text" 
                             :placeholder="`Search and add ${getFieldLabel(filter.field)}...`"
                             class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
@@ -273,7 +278,11 @@
                           class="max-h-48 overflow-y-auto border border-gray-200 rounded-md bg-white shadow-lg">
                           <button v-for="(suggestion, idx) in filter.suggestions" :key="idx"
                             @click="addUserToMultiSelect(filter, suggestion)"
-                            class="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0">
+                            :class="[
+                              'w-full text-left px-3 py-2 text-sm border-b border-gray-100 last:border-b-0 transition-colors',
+                              filter.selectedLinkIndex === idx ? 'bg-blue-100 text-blue-900' : 'hover:bg-gray-100'
+                            ]"
+                            :ref="filter.selectedLinkIndex === idx ? 'selectedLinkOption' : null">
                             <div class="font-medium text-gray-900">{{ suggestion.label }}</div>
                             <div class="text-xs text-gray-500">{{ suggestion.subtitle }}</div>
                           </button>
@@ -301,8 +310,11 @@
                       <div class="relative">
                         <input v-model="filter.tagInput" 
                           @input="handleTagSearch(filter, filter.tagInput)"
-                          @keyup.enter="addTagFromInput(filter)"
+                          @keyup.enter="handleTagEnter(filter)"
                           @keyup.comma="addTagFromInput(filter)"
+                          @keydown.up.prevent="handleTagKeyNavigation(filter, 'up')"
+                          @keydown.down.prevent="handleTagKeyNavigation(filter, 'down')"
+                          @keydown.escape="clearTagSuggestions(filter)"
                           type="text" 
                           placeholder="Search and select tags or type new ones..."
                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 hover:border-gray-400" />
@@ -321,7 +333,11 @@
                         class="max-h-48 overflow-y-auto border border-gray-200 rounded-md bg-white shadow-lg">
                         <button v-for="(tagSuggestion, idx) in filter.tagSuggestions" :key="idx"
                           @click="addTagFromSuggestion(filter, tagSuggestion)"
-                          class="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b border-gray-100 last:border-b-0">
+                          :class="[
+                            'w-full text-left px-3 py-2 text-sm border-b border-gray-100 last:border-b-0 transition-colors',
+                            filter.selectedTagIndex === idx ? 'bg-blue-100 text-blue-900' : 'hover:bg-gray-100'
+                          ]"
+                          :ref="filter.selectedTagIndex === idx ? 'selectedTagOption' : null">
                           <div class="flex items-center justify-between">
                             <div>
                               <div class="font-medium text-gray-900">{{ tagSuggestion.label }}</div>
@@ -386,7 +402,7 @@
 
 <script setup>
 import { Dropdown, Combobox, Autocomplete } from "frappe-ui"
-import { computed, ref, watch, onMounted, onUnmounted } from "vue"
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from "vue"
 import CustomSearchBox from "./CustomSearchBox.vue"
 import { getTagColor } from '../data/issues.js'
 
@@ -611,6 +627,50 @@ const addUserToMultiSelect = (filter, suggestion) => {
   }
   filter.searchValue = ''
   filter.suggestions = []
+  filter.selectedLinkIndex = -1
+}
+
+// Keyboard navigation functions for link fields
+const handleLinkKeyNavigation = (filter, direction) => {
+  if (!filter.suggestions || filter.suggestions.length === 0) return
+  
+  const maxIndex = filter.suggestions.length - 1
+  
+  // Initialize selectedIndex if not set
+  if (filter.selectedLinkIndex === undefined || filter.selectedLinkIndex === null) {
+    filter.selectedLinkIndex = -1
+  }
+  
+  if (direction === 'down') {
+    filter.selectedLinkIndex = filter.selectedLinkIndex < maxIndex ? filter.selectedLinkIndex + 1 : 0
+  } else if (direction === 'up') {
+    filter.selectedLinkIndex = filter.selectedLinkIndex > 0 ? filter.selectedLinkIndex - 1 : maxIndex
+  }
+  
+  // Scroll selected item into view
+  scrollSelectedLinkIntoView(filter)
+}
+
+const handleLinkEnter = (filter) => {
+  if (filter.selectedLinkIndex >= 0 && filter.suggestions && filter.suggestions[filter.selectedLinkIndex]) {
+    // Select the highlighted suggestion
+    addUserToMultiSelect(filter, filter.suggestions[filter.selectedLinkIndex])
+  }
+}
+
+const clearLinkSuggestions = (filter) => {
+  filter.suggestions = []
+  filter.selectedLinkIndex = -1
+}
+
+const scrollSelectedLinkIntoView = (filter) => {
+  // Use nextTick to ensure DOM is updated
+  nextTick(() => {
+    const selectedElement = document.querySelector(`[ref="selectedLinkOption"]`)
+    if (selectedElement) {
+      selectedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  })
 }
 
 // Tag search helpers
@@ -618,6 +678,9 @@ let tagSearchTimeouts = {}
 
 const handleTagSearch = async (filter, searchValue) => {
   filter.loadingTags = true
+  
+  // Store current selected index to preserve it if possible
+  const previousSelectedIndex = filter.selectedTagIndex
   
   // Clear existing timeout for this filter
   if (tagSearchTimeouts[filter.id]) {
@@ -642,6 +705,15 @@ const handleTagSearch = async (filter, searchValue) => {
       if (response.ok) {
         const data = await response.json()
         filter.tagSuggestions = data.message || []
+        // Preserve current selection or reset to -1 only if suggestions array length changed significantly
+        if (!filter.tagSuggestions || filter.tagSuggestions.length === 0) {
+          filter.selectedTagIndex = -1
+        } else if (previousSelectedIndex >= 0 && previousSelectedIndex < filter.tagSuggestions.length) {
+          // Try to preserve the previous selection if valid
+          filter.selectedTagIndex = previousSelectedIndex
+        } else if (filter.selectedTagIndex >= filter.tagSuggestions.length) {
+          filter.selectedTagIndex = Math.max(0, filter.tagSuggestions.length - 1)
+        }
       }
     } catch (error) {
       console.error('Tag search error:', error)
@@ -677,6 +749,53 @@ const addTagFromSuggestion = (filter, tagSuggestion) => {
   
   filter.tagInput = ''
   filter.tagSuggestions = []
+  filter.selectedTagIndex = -1
+}
+
+// Keyboard navigation functions for tags
+const handleTagKeyNavigation = (filter, direction) => {
+  if (!filter.tagSuggestions || filter.tagSuggestions.length === 0) return
+  
+  const maxIndex = filter.tagSuggestions.length - 1
+  
+  // Initialize selectedIndex if not set
+  if (filter.selectedTagIndex === undefined || filter.selectedTagIndex === null) {
+    filter.selectedTagIndex = -1
+  }
+  
+  if (direction === 'down') {
+    filter.selectedTagIndex = filter.selectedTagIndex < maxIndex ? filter.selectedTagIndex + 1 : 0
+  } else if (direction === 'up') {
+    filter.selectedTagIndex = filter.selectedTagIndex > 0 ? filter.selectedTagIndex - 1 : maxIndex
+  }
+  
+  // Scroll selected item into view
+  scrollSelectedTagIntoView(filter)
+}
+
+const handleTagEnter = (filter) => {
+  if (filter.selectedTagIndex >= 0 && filter.tagSuggestions && filter.tagSuggestions[filter.selectedTagIndex]) {
+    // Select the highlighted suggestion
+    addTagFromSuggestion(filter, filter.tagSuggestions[filter.selectedTagIndex])
+  } else {
+    // Add from input text
+    addTagFromInput(filter)
+  }
+}
+
+const clearTagSuggestions = (filter) => {
+  filter.tagSuggestions = []
+  filter.selectedTagIndex = -1
+}
+
+const scrollSelectedTagIntoView = (filter) => {
+  // Use nextTick to ensure DOM is updated
+  nextTick(() => {
+    const selectedElement = document.querySelector(`[ref="selectedTagOption"]`)
+    if (selectedElement) {
+      selectedElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  })
 }
 
 // Tag styling function using exact backend category colors
@@ -720,6 +839,9 @@ let searchTimeouts = {}
 const handleLinkSearch = async (filter, searchValue) => {
   filter.searchValue = searchValue
   filter.loading = true
+  
+  // Store current selected index to preserve it if possible
+  const previousSelectedIndex = filter.selectedLinkIndex
   
   // Clear existing timeout for this filter
   if (searchTimeouts[filter.id]) {
@@ -766,6 +888,15 @@ const handleLinkSearch = async (filter, searchValue) => {
       }
       
       filter.suggestions = searchResults
+      // Preserve current selection or reset to -1 only if suggestions array length changed significantly
+      if (!filter.suggestions || filter.suggestions.length === 0) {
+        filter.selectedLinkIndex = -1
+      } else if (previousSelectedIndex >= 0 && previousSelectedIndex < filter.suggestions.length) {
+        // Try to preserve the previous selection if valid
+        filter.selectedLinkIndex = previousSelectedIndex
+      } else if (filter.selectedLinkIndex >= filter.suggestions.length) {
+        filter.selectedLinkIndex = Math.max(0, filter.suggestions.length - 1)
+      }
     } catch (error) {
       console.error('Search error:', error)
       filter.suggestions = []
@@ -907,10 +1038,12 @@ const addFilter = (fieldValue) => {
     showSuggestions: false,
     loading: false,
     userDisplayMap: {},
+    selectedLinkIndex: -1,
     // Tags-specific properties
     tagInput: '',
     tagSuggestions: [],
-    loadingTags: false
+    loadingTags: false,
+    selectedTagIndex: -1
   }
   
   pendingFilters.value.push(newFilter)

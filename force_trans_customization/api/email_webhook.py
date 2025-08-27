@@ -1106,6 +1106,22 @@ def create_support_issue_from_communication(communication, sender_email, sender_
             update_issue_status_on_customer_reply(existing_issue)
             return existing_issue
         
+        # if not sender_email and subject :
+        #     frappe.log("No sender email found, cannot create support issue.")
+        #     return None
+
+        print("Creating new support issue...")
+        print("-------------------------------------------")
+        print(f"Subject: {communication.subject}")
+        print(f"From: {sender_email}")
+
+        if sender_email is None and  communication.subject == "Delivery Status Notification (Failure)":
+            frappe.log_error(
+            message=f"No sender email found for delivery failure notification in communication {communication.name}",
+            title="Support Issue Creation Skipped"
+            )
+            return None
+        
         # Create a new Issue
         issue = frappe.new_doc("Issue")
         
