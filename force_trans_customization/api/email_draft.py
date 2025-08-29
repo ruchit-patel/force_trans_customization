@@ -251,7 +251,13 @@ def undo_scheduled_email(communication_name):
         
         for queue_entry in email_queue_entries:
             try:
-                frappe.delete_doc("Email Queue", queue_entry.name, ignore_permissions=True)
+                # Use system user context to bypass administrator check
+                current_user = frappe.session.user
+                try:
+                    frappe.set_user("Administrator")
+                    frappe.delete_doc("Email Queue", queue_entry.name, ignore_permissions=True)
+                finally:
+                    frappe.set_user(current_user)
             except Exception as e:
                 frappe.log_error(f"Error deleting email queue entry {queue_entry.name}: {str(e)}")
         
