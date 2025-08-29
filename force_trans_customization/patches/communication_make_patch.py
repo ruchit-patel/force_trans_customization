@@ -27,7 +27,7 @@ def patched_make(
     cc=None,
     bcc=None,
     email_template=None,
-    add_signature=True,
+    add_signature=False,
     communication_type="Communication",
     now=False,
     read_receipt=None,
