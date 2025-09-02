@@ -432,9 +432,6 @@ force_trans_customization.communication_draft = {
             
             return subject.replace(crmIdRegex, '').trim();
         };
-
-
-
     },
 
     delete_draft(draft_name) {

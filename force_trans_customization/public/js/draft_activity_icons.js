@@ -49,19 +49,44 @@ function add_draft_icons_proper() {
                 </a>
             `);
             
+            // Get draft name from timeline item data attribute
+            const draft_name = $item.data('name') || $item.find('[data-name]').first().data('name');
+            
             // Add click handlers
             edit_draft_btn.on('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                alert('Edit Draft: Feature will be implemented soon!');
-                // TODO: Implement edit draft functionality
+                
+                if (draft_name) {
+                    // Call server to get draft details and open composer
+                    frappe.call({
+                        method: "frappe.client.get",
+                        args: {
+                            doctype: "Communication",
+                            name: draft_name
+                        },
+                        callback: function(r) {
+                            if (r.message) {
+                                // Use the existing function from communication_draft.js
+                                force_trans_customization.communication_draft.open_composer_with_draft(r.message);
+                            }
+                        }
+                    });
+                } else {
+                    frappe.msgprint(__("Draft name not found"));
+                }
             });
             
             delete_draft_btn.on('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                alert('Delete Draft: Feature will be implemented soon!');
-                // TODO: Implement delete draft functionality
+                
+                if (draft_name) {
+                    // Use the existing delete function from communication_draft.js
+                    force_trans_customization.communication_draft.delete_draft(draft_name);
+                } else {
+                    frappe.msgprint(__("Draft name not found"));
+                }
             });
             
             if ($actionsContainer.length > 0) {
