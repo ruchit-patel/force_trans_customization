@@ -25,6 +25,7 @@ force_trans_customization.communication_draft = {
         const original_make = frappe.views.CommunicationComposer.prototype.make;
         frappe.views.CommunicationComposer.prototype.make = function () {
             original_make.call(this);
+            
             // Add Save As Draft button to dialog footer
             const me = this;
             const $footer = $(this.dialog.$wrapper).find('.modal-footer');
@@ -34,6 +35,20 @@ force_trans_customization.communication_draft = {
                 $btn.on('click', function () {
                     me.save_as_draft();
                 });
+            }
+            
+            // Clean the subject if it exists
+            if (this.dialog && this.subject) {
+                const cleanedSubject = this.clean_subject_crm_id(this.subject);
+                if (cleanedSubject !== this.subject) {
+                    this.subject = cleanedSubject;
+                    // Update the dialog field if it exists
+                    setTimeout(() => {
+                        if (this.dialog.get_field('subject')) {
+                            this.dialog.set_value('subject', cleanedSubject);
+                        }
+                    }, 100);
+                }
             }
         };
 
@@ -72,6 +87,7 @@ force_trans_customization.communication_draft = {
                     callback: function (r) {
                         if (r.message && r.message.success) {
                             frappe.show_alert(__("Draft saved"), 3);
+                            this.clear_cache();
                             // Update draft_name for future saves
                             if (r.message.draft_name) {
                                 this.draft_name = r.message.draft_name;
@@ -407,7 +423,16 @@ force_trans_customization.communication_draft = {
             });
         };
 
-
+        // Add function to clean subject from CRM ID
+        frappe.views.CommunicationComposer.prototype.clean_subject_crm_id = function(subject) {
+            if (!subject) return subject;
+            
+            // Remove CRM ID patterns like (#CRM-LEAD-2025-00004) or (#ISS-2024-001) etc.
+            // This regex matches: space + opening bracket + # + any characters + closing bracket
+            const crmIdRegex = /\s*\(#[^)]+\)\s*$/;
+            
+            return subject.replace(crmIdRegex, '').trim();
+        };
     },
 
     delete_draft(draft_name) {
@@ -441,11 +466,14 @@ force_trans_customization.communication_draft = {
 };
 
 force_trans_customization.communication_draft.open_composer_with_draft = function (draft_doc) {
+    // Clean the subject before opening the composer
+    const cleanedSubject = draft_doc.subject ? draft_doc.subject.replace(/\s*\(#[^)]+\)\s*$/, '').trim() : draft_doc.subject;
+    
     // Open the CommunicationComposer dialog with draft_doc's data
     const composer = new frappe.views.CommunicationComposer({
         doc: cur_frm.doc,
         frm: cur_frm,
-        subject: draft_doc.subject,
+        subject: cleanedSubject,
         recipients: draft_doc.recipients,
         message: draft_doc.content, // Use 'message' instead of 'content'
         cc: draft_doc.cc,
