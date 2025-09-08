@@ -87,6 +87,7 @@ force_trans_customization.communication_draft = {
                     callback: function (r) {
                         if (r.message && r.message.success) {
                             frappe.show_alert(__("Draft saved"), 3);
+                            this.clear_cache();
                             // Update draft_name for future saves
                             if (r.message.draft_name) {
                                 this.draft_name = r.message.draft_name;
