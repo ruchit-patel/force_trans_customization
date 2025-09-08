@@ -585,7 +585,8 @@ def get_issues_with_assignments(limit_page_length=10, limit_start=0, filters=Non
             "modified",
             "owner",
             "description",
-            "custom_is_response_expected"
+            "custom_is_response_expected",
+            "custom_assigned_csm_team"
         ]
         
         # Process new filter structure from frontend
@@ -762,7 +763,8 @@ def get_single_issue_with_assignments(issue_name):
             "modified",
             "owner",
             "description",
-            "custom_is_response_expected"
+            "custom_is_response_expected",
+            "custom_assigned_csm_team"
         ]
         
         # Get the single issue
@@ -967,7 +969,8 @@ def filter_issues_by_suggestion(suggestion_type, suggestion_value, limit_page_le
                 "creation",
                 "modified",
                 "owner",
-                "description"
+                "description",
+                "custom_assigned_csm_team"
             ]
             
             # Get issues using frappe.get_list to respect permissions
@@ -1034,7 +1037,8 @@ def get_issue_stats():
                 "status",
                 "raised_by",
                 "custom_is_response_awaited",
-                "custom_is_response_expected"
+                "custom_is_response_expected",
+            "custom_assigned_csm_team"
             ],
             limit_page_length=0,  # Get all records
             ignore_permissions=False
@@ -1196,7 +1200,8 @@ def get_issues_by_stat_filter(stat_type, limit_page_length=10, limit_start=0, or
             "modified",
             "owner",
             "description",
-            "custom_is_response_expected"
+            "custom_is_response_expected",
+            "custom_assigned_csm_team"
         ]
         
         # Combine all issue name restrictions
