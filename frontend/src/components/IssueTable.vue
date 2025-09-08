@@ -99,6 +99,14 @@
 									<span v-else class="text-gray-400 text-sm">-</span>
 								</div>
 
+								<!-- CSM Team simple display like Raised By -->
+								<Tooltip v-else-if="column.key === 'custom_assigned_csm_team'" 
+									:text="`CSM Team: ${issue.custom_assigned_csm_team || 'Not assigned'}`">
+									<span class="text-sm font-medium text-gray-900 truncate block">
+										{{ issue.custom_assigned_csm_team || '-' }}
+									</span>
+								</Tooltip>
+
 								<!-- Tags -->
 								<div v-else-if="column.key === '_user_tags'"
 									class="flex items-center gap-1 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
@@ -527,6 +535,12 @@ export default {
 				label: "Assigned Users",
 				key: "custom_users_assigned",
 				width: "150px",
+				sortable: false,
+			},
+			{
+				label: "CSM Team",
+				key: "custom_assigned_csm_team",
+				width: "120px",
 				sortable: false,
 			},
 			{
