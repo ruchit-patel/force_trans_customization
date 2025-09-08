@@ -100,7 +100,13 @@ def process_ses_email(email_data):
         # Clean up body text (remove escape characters)
         body_text = body_text.replace("\\r\\n", "\n").replace("\\n", "\n")
         
-        # Determine the primary recipient (first to_email)
+
+        if not to_emails or len(to_emails) == 0:
+            delivered_to = extract_delivered_to_from_headers(headers)
+            if delivered_to:
+                to_emails = [delivered_to]
+                frappe.log(f"Using Delivered-To header {delivered_to} as to_emails was empty")
+
         primary_recipient = to_emails[0] if to_emails else ""
         
         # Find matching Email Account
@@ -156,7 +162,7 @@ def process_raw_email(raw_email_content):
     try:
         # Parse the raw email
         msg = email.message_from_string(raw_email_content)
-        
+
         # Extract basic email info
         message_id = msg.get('Message-ID', '')
         subject = decode_email_header(msg.get('Subject', ''))
@@ -236,6 +242,13 @@ def process_raw_email(raw_email_content):
                     body_html = payload.decode(msg.get_content_charset() or 'utf-8', errors='ignore')
                 else:
                     body_html = str(payload)
+        
+        # Handle empty to_emails with Delivered-To fallback
+        if not to_emails or len(to_emails) == 0:
+            delivered_to = extract_delivered_to_from_headers(dict(msg.items()))
+            if delivered_to:
+                to_emails = [delivered_to]
+                frappe.log(f"Using Delivered-To header {delivered_to} as to_emails was empty in raw email processing")
         
         # Find matching Email Account
         primary_recipient = to_emails[0] if to_emails else ""
@@ -1452,6 +1465,59 @@ def get_default_company(email_account=None):
         return default_company
         
     except Exception:
+        return None
+
+
+def extract_delivered_to_from_headers(headers):
+    """
+    Extract the Delivered-To header from email headers as fallback when to_emails is empty
+    """
+    try:
+        # Try different case variations of Delivered-To header
+        delivered_to_variations = [
+            'Delivered-To',
+            'delivered-to', 
+            'DELIVERED-TO',
+            'Delivered-to'
+        ]
+        
+        delivered_to = ""
+        for header_name in delivered_to_variations:
+            if header_name in headers:
+                delivered_to = headers[header_name]
+                break
+        
+        if not delivered_to:
+            # Also try X-Original-To as another fallback
+            x_original_to_variations = [
+                'X-Original-To',
+                'x-original-to',
+                'X-ORIGINAL-TO'
+            ]
+            
+            for header_name in x_original_to_variations:
+                if header_name in headers:
+                    delivered_to = headers[header_name]
+                    break
+        
+        if delivered_to:
+            # Clean the email address - remove < > brackets if present
+            delivered_to = delivered_to.strip()
+            if '<' in delivered_to and '>' in delivered_to:
+                # Extract email from "Name <email@domain.com>" format
+                start = delivered_to.find('<')
+                end = delivered_to.find('>')
+                if start != -1 and end != -1:
+                    delivered_to = delivered_to[start+1:end]
+            
+            frappe.log(f"DEBUG: Extracted Delivered-To: {delivered_to}")
+            return delivered_to.strip()
+        
+        frappe.log("WARNING: No Delivered-To or X-Original-To header found")
+        return None
+        
+    except Exception as e:
+        frappe.log_error(f"Error extracting Delivered-To from headers: {str(e)}")
         return None
 
 
