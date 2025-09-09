@@ -91,7 +91,7 @@ def process_ses_email(email_data):
         timestamp = email_data.get("timestamp")
         from_email = email_data.get("from_email")
         to_emails = email_data.get("to_emails", [])
-        subject = email_data.get("subject", "")
+        subject = decode_email_header(email_data.get("subject", ""))
         body_text = email_data.get("body_text", "")
         body_html = email_data.get("body_html", "")
         attachments = email_data.get("attachments", [])
@@ -346,21 +346,48 @@ def extract_proper_message_id(headers):
 
 def decode_email_header(header_value):
     """
-    Decode email header that might be encoded
+    Decode email header that might be encoded (RFC 2047 MIME encoded-word format)
+    Handles formats like =?UTF-8?B?...?= and =?UTF-8?Q?...?=
     """
     if not header_value:
         return ""
     
     try:
+        # Handle multiple encoded-word segments that may be split across lines
+        # Remove any line breaks and spaces between encoded words
+        import re
+        
+        # Remove line breaks and normalize spaces between encoded words
+        header_value = re.sub(r'\s*\n\s*', ' ', str(header_value))
+        header_value = re.sub(r'(\?=)\s+(=\?)', r'\1\2', header_value)
+        
+        # Use Python's email.header.decode_header function
         decoded_header = decode_header(header_value)
         decoded_string = ""
+        
         for part, encoding in decoded_header:
             if isinstance(part, bytes):
-                decoded_string += part.decode(encoding or 'utf-8', errors='ignore')
+                # Try the specified encoding first, then fallback to utf-8
+                try:
+                    if encoding:
+                        decoded_string += part.decode(encoding, errors='replace')
+                    else:
+                        decoded_string += part.decode('utf-8', errors='replace')
+                except (UnicodeDecodeError, LookupError):
+                    # If encoding fails, try utf-8 as fallback
+                    decoded_string += part.decode('utf-8', errors='replace')
             else:
-                decoded_string += part
+                decoded_string += str(part)
+        
+        # Clean up any remaining artifacts
+        decoded_string = decoded_string.strip()
+        
+        frappe.log(f"Decoded email header: '{header_value}' -> '{decoded_string}'")
         return decoded_string
-    except Exception:
+        
+    except Exception as e:
+        frappe.log_error(f"Error decoding email header '{header_value}': {str(e)}")
+        # Fallback: return the original string if decoding fails
         return str(header_value)
 
 
