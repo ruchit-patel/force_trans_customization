@@ -54,7 +54,9 @@
 							<!-- Custom content for specific columns only -->
 							<template #default>
 								<!-- Issue ID with link -->
-								<a v-if="column.key === 'name'" href="#"
+								<a v-if="column.key === 'name'" 
+									:href="getIssueUrl(issue)"
+									target="_blank"
 									class="text-blue-600 hover:text-blue-800 hover:underline font-medium text-sm"
 									@click.prevent="handleIssueClick(issue)">
 									{{ formatIssueId(item) }}
@@ -510,49 +512,49 @@ export default {
 			{
 				label: "Issue ID",
 				key: "name",
-				width: "110px",
+				width: "90px",
 				sortable: true,
 			},
 			{
 				label: "Title",
 				key: "subject",
-				width: 4,
+				width: 3,
 				sortable: true,
 			},
 			{
 				label: "Status",
 				key: "status",
-				width: "160px",
+				width: "110px",
 				sortable: true,
 			},
 			{
 				label: "Raised By",
 				key: "raised_by",
-				width: "150px",
+				width: "120px",
 				sortable: true,
 			},
 			{
 				label: "Assigned Users",
 				key: "custom_users_assigned",
-				width: "150px",
+				width: "120px",
 				sortable: false,
 			},
 			{
 				label: "CSM Team",
 				key: "custom_assigned_csm_team",
-				width: "120px",
+				width: "100px",
 				sortable: false,
 			},
 			{
 				label: "Tags",
 				key: "_user_tags",
-				width: "120px",
+				width: "100px",
 				sortable: false,
 			},
 			{
 				label: "Created At",
 				key: "creation",
-				width: "100px",
+				width: "90px",
 				sortable: true,
 			},
 		])
@@ -577,12 +579,17 @@ export default {
 			console.log("Selected rows:", selections)
 		}
 
+		// Get issue URL
+		const getIssueUrl = (issue) => {
+			const hostname = window.location.origin
+			return `${hostname}/app/issue/${issue.name}`
+		}
+
 		// Handle issue click
 		const handleIssueClick = (issue) => {
 			console.log("Issue clicked:", issue)
 			// Navigate to Frappe issue page
-			const hostname = window.location.origin
-			const issueUrl = `${hostname}/app/issue/${issue.name}`
+			const issueUrl = getIssueUrl(issue)
 			window.open(issueUrl, '_blank')
 		}
 
@@ -798,6 +805,7 @@ export default {
 			listOptions,
 			transformedIssues,
 			handleSelections,
+			getIssueUrl,
 			handleIssueClick,
 			getStatusColor,
 			getPriorityColor,
