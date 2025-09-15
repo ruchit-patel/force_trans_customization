@@ -139,7 +139,7 @@ force_trans_customization.communication_draft = {
                 const sendAfter = new Date(now.getTime() + 30 * 1000);
 
                 // Convert to Frappe's timezone and format properly
-                const sendAfterInTimezone = frappe.datetime.convert_to_user_tz(sendAfter);
+                const sendAfterInTimezone = frappe.datetime.convert_to_system_tz(sendAfter);
                 const formattedDateTime = frappe.datetime.get_datetime_as_string(sendAfterInTimezone);
 
                 console.log("Setting send_after to:", formattedDateTime);
