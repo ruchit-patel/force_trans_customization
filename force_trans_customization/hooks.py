@@ -189,7 +189,8 @@ make_email_body_message = [
 scheduler_events = {
     "cron": {
         "* * * * *": [
-            "force_trans_customization.tasks.process_email_queue_frequent"
+            "force_trans_customization.tasks.process_email_queue_frequent",
+            "force_trans_customization.tasks.pull_email_accounts"
         ]
     }
 }

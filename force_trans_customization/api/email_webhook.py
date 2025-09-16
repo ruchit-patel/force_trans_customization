@@ -24,7 +24,7 @@ import mimetypes
 import email
 import re
 from frappe import _
-from frappe.utils import now_datetime, strip_html_tags, cstr, get_datetime, today, nowtime, get_string_between
+from frappe.utils import now_datetime, strip_html_tags, cstr, get_datetime, today, nowtime, get_string_between, cint
 from frappe.email.doctype.email_account.email_account import EmailAccount
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -64,6 +64,26 @@ def test():
         }
         
     except Exception as e:
+        # Use handle_bad_emails to save the problematic email for investigation
+        try:
+            email_json = json.loads(email_data) if email_data else {}
+            raw_email = email_json.get("raw_email", email_data)
+
+            # Try to determine email account from the data
+            to_emails = email_json.get("to_emails", [])
+            email_account_name = None
+            if to_emails:
+                email_account_name = find_matching_email_account(to_emails[0], to_emails)
+
+            handle_bad_emails(
+                email_account_name=email_account_name,
+                uid=email_json.get("message_id", "webhook_unknown"),
+                raw=raw_email,
+                reason=f"Webhook processing failed: {str(e)}"
+            )
+        except Exception as handle_error:
+            frappe.log_error(f"Failed to handle bad email: {str(handle_error)}")
+
         frappe.log_error(
             message=f"Error processing SES webhook: {str(e)}\nData: {email_data}",
             title="SES Webhook Error"
@@ -148,6 +168,23 @@ def process_ses_email(email_data):
         return communication
         
     except Exception as e:
+        # Use handle_bad_emails to save the problematic email for investigation
+        try:
+            raw_email = email_data.get("raw_email", json.dumps(email_data))
+            to_emails = email_data.get("to_emails", [])
+            email_account_name = None
+            if to_emails:
+                email_account_name = find_matching_email_account(to_emails[0], to_emails)
+
+            handle_bad_emails(
+                email_account_name=email_account_name,
+                uid=email_data.get("message_id", "ses_email_unknown"),
+                raw=raw_email,
+                reason=f"SES email processing failed: {str(e)}"
+            )
+        except Exception as handle_error:
+            frappe.log_error(f"Failed to handle bad SES email: {str(handle_error)}")
+
         frappe.log_error(
             message=f"Error in process_ses_email: {str(e)}",
             title="SES Email Processing Error"
@@ -291,6 +328,28 @@ def process_raw_email(raw_email_content):
         return communication
         
     except Exception as e:
+        # Use handle_bad_emails to save the problematic email for investigation
+        try:
+            # Try to parse email to get minimal info for saving
+            msg = email.message_from_string(raw_email_content) if raw_email_content else None
+            to_emails = []
+            email_account_name = None
+
+            if msg:
+                to_header = msg.get('To', '')
+                if to_header:
+                    to_emails = [addr.strip() for addr in to_header.split(',')]
+                    email_account_name = find_matching_email_account(to_emails[0], to_emails) if to_emails else None
+
+            handle_bad_emails(
+                email_account_name=email_account_name,
+                uid=msg.get('Message-ID', 'raw_email_unknown') if msg else 'raw_email_unknown',
+                raw=raw_email_content,
+                reason=f"Raw email processing failed: {str(e)}"
+            )
+        except Exception as handle_error:
+            frappe.log_error(f"Failed to handle bad raw email: {str(handle_error)}")
+
         frappe.log_error(
             message=f"Error in process_raw_email: {str(e)}",
             title="Raw Email Processing Error"
@@ -599,89 +658,120 @@ def clean_html_content_for_issue(html_content):
     return clean_text.strip()
 
 
-def create_communication_record(message_id, timestamp, from_email, to_emails, 
+def create_communication_record(message_id, timestamp, from_email, to_emails,
                               subject, body_text, body_html, headers, email_account, in_reply_to=None):
     """
     Create a Communication record similar to how Frappe handles IMAP/POP emails
     """
-    
-    # Parse sender name and email
-    sender_name, sender_email = parse_email_address(from_email)
-    
-    # Create the communication document
-    communication = frappe.new_doc("Communication")
-    communication.communication_type = "Communication"
-    communication.communication_medium = "Email"
-    communication.sent_or_received = "Received"
-    communication.subject = subject
-    communication.sender = sender_email
-    communication.sender_full_name = sender_name or sender_email
-    
-    # Set recipients
-    communication.recipients = ", ".join(to_emails)
-    
-    # Set content - prefer HTML over text, with cleanup
-    if body_html and body_html.strip():
-        communication.content = body_html
-        # Clean up text content from HTML
-        text_content = strip_html_tags(body_html)
-        communication.text_content = clean_email_content(text_content)
-    else:
-        # Clean up plain text content
-        cleaned_text = clean_email_content(body_text) if body_text else ""
-        communication.content = cleaned_text.replace("\n", "<br>") if cleaned_text else ""
-        communication.text_content = cleaned_text or ""
-    
-    # Set timestamps
-    if timestamp:
-        try:
-            # Try to parse different timestamp formats
-            if isinstance(timestamp, str) and 'T' in timestamp:
-                # ISO 8601 format
-                communication.communication_date = parse_iso_datetime(timestamp)
-            else:
-                # Email date header format
-                communication.communication_date = parse_email_date(timestamp)
-        except Exception as e:
-            frappe.log_error(f"Error parsing timestamp {timestamp}: {str(e)}")
+    communication = None
+    try:
+        # Parse sender name and email
+        sender_name, sender_email = parse_email_address(from_email)
+
+        # Create the communication document
+        communication = frappe.new_doc("Communication")
+        communication.communication_type = "Communication"
+        communication.communication_medium = "Email"
+        communication.sent_or_received = "Received"
+        communication.subject = subject
+        communication.sender = sender_email
+        communication.sender_full_name = sender_name or sender_email
+
+        # Set recipients
+        communication.recipients = ", ".join(to_emails)
+
+        # Set content - prefer HTML over text, with cleanup
+        if body_html and body_html.strip():
+            communication.content = body_html
+            # Clean up text content from HTML
+            text_content = strip_html_tags(body_html)
+            communication.text_content = clean_email_content(text_content)
+        else:
+            # Clean up plain text content
+            cleaned_text = clean_email_content(body_text) if body_text else ""
+            communication.content = cleaned_text.replace("\n", "<br>") if cleaned_text else ""
+            communication.text_content = cleaned_text or ""
+
+        # Set timestamps
+        if timestamp:
+            try:
+                # Try to parse different timestamp formats
+                if isinstance(timestamp, str) and 'T' in timestamp:
+                    # ISO 8601 format
+                    communication.communication_date = parse_iso_datetime(timestamp)
+                else:
+                    # Email date header format
+                    communication.communication_date = parse_email_date(timestamp)
+            except Exception as e:
+                frappe.log_error(f"Error parsing timestamp {timestamp}: {str(e)}")
+                communication.communication_date = now_datetime()
+        else:
             communication.communication_date = now_datetime()
-    else:
-        communication.communication_date = now_datetime()
-    
-    # Set email account
-    if email_account:
-        communication.email_account = email_account
-    
-    # Set message ID for deduplication
-    communication.message_id = message_id
-    
-    # Set In-Reply-To for threading (mimicking Frappe's approach)
-    if in_reply_to:
-        # Check if this is a reply to system-sent mail
-        if frappe.local.site in in_reply_to:
-            # Find parent communication by message_id
-            parent_communication = find_parent_communication(in_reply_to)
-            if parent_communication:
-                communication.in_reply_to = parent_communication.name
-    
-    # Add email headers as JSON
-    if headers:
-        communication.email_headers = json.dumps(headers)
-    
-    # Set status
-    communication.status = "Open"
-    communication.read_by_recipient = 0
-    
-    # Save the communication
-    communication.insert(ignore_permissions=True)
-    
-    # Commit the transaction
-    frappe.db.commit()
-    
-    # Create support issue after communication is saved
-    support_issue = create_support_issue_from_communication(communication, sender_email, sender_name, to_emails)
-    
-    return communication
+
+        # Set email account
+        if email_account:
+            communication.email_account = email_account
+
+        # Set message ID for deduplication
+        communication.message_id = message_id
+
+        # Set In-Reply-To for threading (mimicking Frappe's approach)
+        if in_reply_to:
+            # Check if this is a reply to system-sent mail
+            if frappe.local.site in in_reply_to:
+                # Find parent communication by message_id
+                parent_communication = find_parent_communication(in_reply_to)
+                if parent_communication:
+                    communication.in_reply_to = parent_communication.name
+
+        # Add email headers as JSON
+        if headers:
+            communication.email_headers = json.dumps(headers)
+
+        # Set status
+        communication.status = "Open"
+        communication.read_by_recipient = 0
+
+        # Save the communication
+        communication.insert(ignore_permissions=True)
+
+        # Commit the transaction
+        frappe.db.commit()
+
+        # Create support issue after communication is saved
+        support_issue = create_support_issue_from_communication(communication, sender_email, sender_name, to_emails)
+
+        return communication
+
+    except Exception as e:
+        # Use handle_bad_emails to save the problematic email for investigation
+        try:
+            # Create raw email content from available data
+            raw_email_data = {
+                "message_id": message_id,
+                "from_email": from_email,
+                "to_emails": to_emails,
+                "subject": subject,
+                "body_text": body_text,
+                "body_html": body_html,
+                "headers": headers,
+                "timestamp": timestamp
+            }
+
+            handle_bad_emails(
+                email_account_name=email_account,
+                uid=message_id or "communication_unknown",
+                raw=json.dumps(raw_email_data, default=str),
+                reason=f"Communication creation failed: {str(e)}"
+            )
+        except Exception as handle_error:
+            frappe.log_error(f"Failed to handle bad communication email: {str(handle_error)}")
+
+        frappe.log_error(
+            message=f"Error creating communication record: {str(e)}",
+            title="Communication Creation Error"
+        )
+        raise
 
 
 def parse_email_date(date_string):
@@ -1051,8 +1141,67 @@ def validate_webhook_signature(payload, signature, secret):
     expected_signature = hashlib.sha256(
         f"{secret}{payload}".encode()
     ).hexdigest()
-    
+
     return signature == expected_signature
+
+
+def handle_bad_emails(email_account_name, uid, raw, reason):
+    """
+    Save the email in Unhandled Email doctype when processing fails.
+    Similar to EmailAccount.handle_bad_emails() but adapted for webhook processing.
+
+    Args:
+        email_account_name: Name of the email account
+        uid: Unique identifier for the email (can be webhook ID or message ID)
+        raw: Raw email content (string or bytes)
+        reason: Reason for failure
+    """
+    try:
+        import email as email_lib
+
+        # Handle both string and bytes input
+        if isinstance(raw, bytes):
+            raw_str = raw.decode("ASCII", "replace")
+            try:
+                mail = email_lib.message_from_string(raw_str)
+                message_id = mail.get("Message-ID", "")
+            except Exception:
+                message_id = "can't be parsed"
+        else:
+            try:
+                raw_str = str(raw).encode(errors="replace").decode()
+                mail = email_lib.message_from_string(raw_str)
+                message_id = mail.get("Message-ID", "")
+            except Exception:
+                raw_str = str(raw) if raw else "can't be parsed"
+                message_id = "can't be parsed"
+
+        # Create Unhandled Email document
+        unhandled_email = frappe.get_doc({
+            "doctype": "Unhandled Email",
+            "raw": raw_str,
+            "uid": str(uid) if uid else "",
+            "reason": str(reason),
+            "message_id": message_id,
+            "email_account": email_account_name or ""
+        })
+
+        unhandled_email.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        frappe.log_error(
+            message=f"Email saved to Unhandled Email: {reason}\nUID: {uid}\nMessage-ID: {message_id}",
+            title="Webhook Email Processing Failed"
+        )
+
+        return unhandled_email.name
+
+    except Exception as e:
+        frappe.log_error(
+            message=f"Error saving bad email to Unhandled Email: {str(e)}\nOriginal reason: {reason}",
+            title="Handle Bad Email Error"
+        )
+        return None
 
 
 
