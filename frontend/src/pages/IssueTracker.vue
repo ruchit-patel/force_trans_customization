@@ -8,8 +8,16 @@
             <h1 class="text-2xl font-bold text-gray-900">Ticket Tracker</h1>
             <nav class="flex space-x-4">
               <router-link to="/"
-                class="bg-blue-100 text-blue-700 px-3 py-2 rounded-md text-sm font-medium">
+                class="bg-blue-100 text-blue-700 px-3 py-2 rounded-md text-sm font-medium"
+                active-class="bg-blue-100 text-blue-700"
+                inactive-class="text-gray-600 hover:text-gray-900">
                 Tickets
+              </router-link>
+              <router-link to="/sent-emails"
+                class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                active-class="bg-blue-100 text-blue-700"
+                inactive-class="text-gray-600 hover:text-gray-900">
+                Sent Emails
               </router-link>
               <a href="/app/support"
                 class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
@@ -22,8 +30,14 @@
             </nav>
           </div>
           <div class="flex items-center space-x-4">
+            <Button @click="showComposeEmailDialog = true" variant="solid" size="sm">
+              <template #prefix>
+                <FeatherIcon name="mail" class="w-4 h-4" />
+              </template>
+              Compose Email
+            </Button>
             <span class="text-sm text-gray-600">{{ session.user }}</span>
-            <Button @click="session.logout.submit()" theme="gray" variant="outline" size="sm">
+            <Button @click="session.logout.submit()" variant="outline" size="sm">
               Logout
             </Button>
           </div>
@@ -89,6 +103,12 @@
 
     <!-- Real-time Notifications -->
     <RealTimeNotifications :notifications="notifications" @remove="removeNotification" />
+
+    <!-- Compose Email Dialog -->
+    <ComposeEmailDialog
+      v-model:show="showComposeEmailDialog"
+      @email-sent="handleEmailSent"
+    />
   </div>
 </template>
 
@@ -100,6 +120,7 @@ import IssuePagination from "../components/IssuePagination.vue"
 import IssueStats from "../components/IssueStats.vue"
 import IssueTable from "../components/IssueTable.vue"
 import RealTimeNotifications from "../components/RealTimeNotifications.vue"
+import ComposeEmailDialog from "../components/ComposeEmailDialog.vue"
 import { useIssueFilters } from "../composables/useIssueFilters"
 import { useIssueListUpdates } from "../composables/useIssueListUpdates"
 import {
@@ -222,6 +243,9 @@ const manualRefresh = () => {
 // Simplified notification system for list updates
 const notifications = ref([])
 
+// Compose email dialog state
+const showComposeEmailDialog = ref(false)
+
 const addNotification = (notification) => {
   notifications.value.push({
     id: Date.now() + Math.random(),
@@ -236,6 +260,30 @@ const addNotification = (notification) => {
 
 const removeNotification = (id) => {
   notifications.value = notifications.value.filter(n => n.id !== id)
+}
+
+// Handle email sent event
+const handleEmailSent = (emailData) => {
+  // Map action types to notification titles
+  const titleMap = {
+    'sent': 'Email Sent',
+    'scheduled': 'Email Scheduled',
+    'draft_saved': 'Draft Saved',
+    'send_failed': 'Send Failed',
+    'draft_save_failed': 'Save Failed'
+  }
+
+  addNotification({
+    type: emailData.type || 'success',
+    title: titleMap[emailData.action] || 'Email Action',
+    message: emailData.message || `Email "${emailData.subject}" sent successfully to ${emailData.recipientCount} recipients`,
+    timestamp: new Date()
+  })
+
+  // Only close dialog on success
+  if (emailData.type !== 'error') {
+    showComposeEmailDialog.value = false
+  }
 }
 
 // Computed properties for displaying data

@@ -8,6 +8,11 @@ const routes = [
 		name: "IssueTracker",
 		component: () => import("@/pages/IssueTracker.vue"),
 	},
+	{
+		path: "/sent-emails",
+		name: "SentEmails",
+		component: () => import("@/pages/SentEmails.vue"),
+	},
 ]
 
 const router = createRouter({

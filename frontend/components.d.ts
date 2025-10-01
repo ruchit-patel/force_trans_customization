@@ -8,9 +8,11 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ComposeEmailDialog: typeof import('./src/components/ComposeEmailDialog.vue')['default']
     ConflictResolution: typeof import('./src/components/ConflictResolution.vue')['default']
     ConnectedUsers: typeof import('./src/components/ConnectedUsers.vue')['default']
     CustomSearchBox: typeof import('./src/components/CustomSearchBox.vue')['default']
+    GroupSelectorDialog: typeof import('./src/components/GroupSelectorDialog.vue')['default']
     IssueFilters: typeof import('./src/components/IssueFilters.vue')['default']
     IssuePagination: typeof import('./src/components/IssuePagination.vue')['default']
     IssueStats: typeof import('./src/components/IssueStats.vue')['default']

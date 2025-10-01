@@ -11,10 +11,22 @@
 		"copy-html-entry": "cp ../force_trans_customization/public/frontend/index.html ../force_trans_customization/www/frontend.html"
 	},
 	"dependencies": {
+		"@tiptap/extension-color": "^2.1.10",
+		"@tiptap/extension-font-family": "^2.1.10",
+		"@tiptap/extension-highlight": "^2.1.10",
+		"@tiptap/extension-image": "^2.1.10",
+		"@tiptap/extension-table": "^2.1.10",
+		"@tiptap/extension-table-cell": "^2.1.10",
+		"@tiptap/extension-table-header": "^2.1.10",
+		"@tiptap/extension-table-row": "^2.1.10",
+		"@tiptap/extension-text-align": "^2.1.10",
+		"@tiptap/extension-text-style": "^2.1.10",
+		"@tiptap/extension-underline": "^2.1.10",
 		"feather-icons": "^4.29.2",
 		"frappe-ui": "^0.1.149",
 		"lucide-vue-next": "^0.536.0",
 		"socket.io-client": "^4.7.2",
+		"tiptap-extension-resize-image": "^1.1.6",
 		"vue": "^3.5.13",
 		"vue-router": "^4.5.0"
 	},
