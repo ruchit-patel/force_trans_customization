@@ -585,14 +585,14 @@
                   <input type="checkbox" v-model="formData.send_unsubscribe_link" class="mr-2" />
                   <span class="text-sm text-gray-700">Send Unsubscribe Link</span>
                 </label>
-                <label class="flex items-center">
+                <!-- <label class="flex items-center">
                   <input type="checkbox" v-model="formData.send_webview_link" class="mr-2" />
                   <span class="text-sm text-gray-700">Send Web View Link</span>
-                </label>
-                <label class="flex items-center">
+                </label> -->
+                <!-- <label class="flex items-center">
                   <input type="checkbox" v-model="formData.published" class="mr-2" />
                   <span class="text-sm text-gray-700">Publish as Web Page</span>
-                </label>
+                </label> -->
               </div>
               <div class="space-y-3">
                 <label class="flex items-center">
@@ -1300,18 +1300,30 @@ watch(() => formData.value.published, (isPublished) => {
 
 // Methods
 const closeDialog = () => {
+  emit('close')
   isDialogOpen.value = false
 }
 
 const resetForm = () => {
   // Auto-populate sender info with current user
   const currentUser = session.user || 'Administrator'
-  const userEmail = currentUser.includes('@') ? currentUser : `${currentUser}@yourcompany.com`
 
+  console.log('Resetting form for user:', currentUser)
+  console.log('Session object:', session)
+
+  // Default values - ensure these are NEVER empty
+  // Try to use session.user as email if it looks like an email
+  let userEmail = currentUser.includes('@') ? currentUser : `${currentUser}@yourcompany.com`
+  let senderName = currentUser === 'Administrator' ? 'System Administrator' : currentUser
+
+  console.log('Default sender email:', userEmail)
+  console.log('Default sender name:', senderName)
+
+  // Initialize form with defaults first
   formData.value = {
-    sender_name: currentUser === 'Administrator' ? 'System Administrator' : currentUser,
-    sender_email: userEmail,
-    send_from: currentUser === 'Administrator' ? 'System Administrator' : currentUser,
+    sender_name: senderName,
+    sender_email: userEmail,  // This MUST have a value
+    send_from: senderName,
     email_group: [],
     subject: '',
     content_type: 'Rich Text',
@@ -1327,6 +1339,40 @@ const resetForm = () => {
     campaign: '',
     attachments: []
   }
+
+  console.log('Form initialized with sender_email:', formData.value.sender_email)
+
+  // Fetch user's actual email from Frappe asynchronously (non-blocking)
+  call('frappe.client.get', {
+    doctype: 'User',
+    name: currentUser
+  }).then(userDoc => {
+    console.log('Fetched user document:', userDoc)
+    if (userDoc && userDoc.email) {
+      const realEmail = userDoc.email
+      const realName = userDoc.full_name || userDoc.first_name || currentUser
+
+      console.log('Updating sender email to:', realEmail)
+      console.log('Updating sender name to:', realName)
+
+      // Only update if we got a real email
+      if (realEmail && realEmail.includes('@')) {
+        formData.value.sender_email = realEmail
+        formData.value.sender_name = realName
+        formData.value.send_from = realName
+
+        console.log('Updated form sender_email:', formData.value.sender_email)
+      } else {
+        console.warn('User document email is invalid, keeping default:', realEmail)
+      }
+    } else {
+      console.warn('User document missing email field, keeping default')
+    }
+  }).catch(error => {
+    console.error('Error fetching user email:', error)
+    console.log('Keeping default sender email:', formData.value.sender_email)
+    // Keep the default values already set - they should NEVER be empty
+  })
 
   // Clear recipients
   emailPills.value = []
@@ -1356,6 +1402,59 @@ const saveDraft = async () => {
     try {
       isSaving.value = true
 
+      // Upload attachments first if any
+      const uploadedAttachments = []
+      if (attachments.value.length > 0) {
+        console.log(`Uploading ${attachments.value.length} attachments...`)
+        for (const file of attachments.value) {
+          try {
+            const formData = new FormData()
+            formData.append('file', file, file.name)
+            formData.append('is_private', '0')
+            // Don't attach to a document yet - we'll link it via the Newsletter attachments child table
+
+            // Use native fetch for file upload as frappe-ui call doesn't handle FormData properly
+            // Get CSRF token from cookies
+            const getCookie = (name) => {
+              const value = `; ${document.cookie}`
+              const parts = value.split(`; ${name}=`)
+              if (parts.length === 2) return parts.pop().split(';').shift()
+              return null
+            }
+
+            const csrfToken = getCookie('csrf_token')
+
+            const uploadResponse = await fetch('/api/method/upload_file', {
+              method: 'POST',
+              headers: {
+                'X-Frappe-CSRF-Token': csrfToken,
+              },
+              body: formData
+            })
+
+            if (!uploadResponse.ok) {
+              const errorText = await uploadResponse.text()
+              console.error('Upload error response:', errorText)
+              throw new Error(`Upload failed with status ${uploadResponse.status}`)
+            }
+
+            const result = await uploadResponse.json()
+            if (result.message) {
+              console.log('File uploaded:', result.message)
+              uploadedAttachments.push({
+                attachment: result.message.file_url
+              })
+            } else {
+              throw new Error('Upload response missing file_url')
+            }
+          } catch (uploadError) {
+            console.error('Error uploading file:', file.name, uploadError)
+            throw new Error(`Failed to upload file "${file.name}": ${uploadError.message || uploadError}`)
+          }
+        }
+        console.log('All attachments uploaded successfully:', uploadedAttachments)
+      }
+
       // Prepare Newsletter document data
       const newsletterData = {
         doctype: 'Newsletter',
@@ -1377,6 +1476,7 @@ const saveDraft = async () => {
         email_group: finalGroups.map(group => ({
           email_group: group.name
         })),
+        attachments: uploadedAttachments,
       }
 
       console.log('Saving Newsletter draft:', newsletterData)
@@ -1492,6 +1592,59 @@ const sendEmail = async () => {
     try {
       isSubmitting.value = true
 
+      // Upload attachments first if any
+      const uploadedAttachments = []
+      if (attachments.value.length > 0) {
+        console.log(`Uploading ${attachments.value.length} attachments...`)
+        for (const file of attachments.value) {
+          try {
+            const formData = new FormData()
+            formData.append('file', file, file.name)
+            formData.append('is_private', '0')
+            // Don't attach to a document yet - we'll link it via the Newsletter attachments child table
+
+            // Use native fetch for file upload as frappe-ui call doesn't handle FormData properly
+            // Get CSRF token from cookies
+            const getCookie = (name) => {
+              const value = `; ${document.cookie}`
+              const parts = value.split(`; ${name}=`)
+              if (parts.length === 2) return parts.pop().split(';').shift()
+              return null
+            }
+
+            const csrfToken = getCookie('csrf_token')
+
+            const uploadResponse = await fetch('/api/method/upload_file', {
+              method: 'POST',
+              headers: {
+                'X-Frappe-CSRF-Token': csrfToken,
+              },
+              body: formData
+            })
+
+            if (!uploadResponse.ok) {
+              const errorText = await uploadResponse.text()
+              console.error('Upload error response:', errorText)
+              throw new Error(`Upload failed with status ${uploadResponse.status}`)
+            }
+
+            const result = await uploadResponse.json()
+            if (result.message) {
+              console.log('File uploaded:', result.message)
+              uploadedAttachments.push({
+                attachment: result.message.file_url
+              })
+            } else {
+              throw new Error('Upload response missing file_url')
+            }
+          } catch (uploadError) {
+            console.error('Error uploading file:', file.name, uploadError)
+            throw new Error(`Failed to upload file "${file.name}": ${uploadError.message || uploadError}`)
+          }
+        }
+        console.log('All attachments uploaded successfully:', uploadedAttachments)
+      }
+
       // Prepare Newsletter document data
       const newsletterData = {
         doctype: 'Newsletter',
@@ -1513,6 +1666,7 @@ const sendEmail = async () => {
         email_group: finalGroups.map(group => ({
           email_group: group.name
         })),
+        attachments: uploadedAttachments,
       }
 
       console.log('Creating Newsletter:', newsletterData)
@@ -1619,8 +1773,11 @@ const sendEmail = async () => {
     }
 
     if (!formData.value.sender_email) {
+      console.error('Sender email is missing! Current formData:', formData.value)
       throw new Error('Sender Email is required')
     }
+
+    console.log('Sending email with sender:', formData.value.sender_email)
 
     // Validate message content based on type
     const messageField = {
