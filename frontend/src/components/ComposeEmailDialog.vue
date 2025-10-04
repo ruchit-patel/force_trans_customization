@@ -190,320 +190,88 @@
 
             <!-- Rich Text Editor -->
             <div v-if="formData.content_type === 'Rich Text'" class="border border-gray-300 rounded-lg overflow-hidden">
-              <!-- Tiptap Toolbar -->
-              <div v-if="editor" class="bg-gray-50 p-2 border-b border-gray-300">
-                <!-- Row 1: Text Formatting -->
-                <div class="flex flex-wrap gap-1 mb-2">
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleBold().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('bold') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-bold"
-                    title="Bold (Ctrl+B)"
-                  >
-                    B
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleItalic().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('italic') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 italic"
-                    title="Italic (Ctrl+I)"
-                  >
-                    I
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleUnderline().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('underline') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 underline"
-                    title="Underline (Ctrl+U)"
-                  >
-                    U
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleStrike().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('strike') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 line-through"
-                    title="Strikethrough"
-                  >
-                    S
-                  </button>
+              <!-- Tiptap Toolbar - Single Row -->
+              <div v-if="editor" class="bg-gray-50 p-2 border-b border-gray-300 overflow-x-auto">
+                <div class="flex flex-nowrap gap-1 min-w-max">
+                  <!-- Text Formatting -->
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleBold().run()" :class="{ 'bg-gray-200': editor.isActive('bold') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 font-bold" title="Bold (Ctrl+B)">B</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleItalic().run()" :class="{ 'bg-gray-200': editor.isActive('italic') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 italic" title="Italic (Ctrl+I)">I</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleUnderline().run()" :class="{ 'bg-gray-200': editor.isActive('underline') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 underline" title="Underline (Ctrl+U)">U</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleStrike().run()" :class="{ 'bg-gray-200': editor.isActive('strike') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 line-through" title="Strikethrough">S</button>
 
                   <div class="border-l border-gray-300 mx-1"></div>
 
                   <!-- Color Picker -->
                   <div class="relative inline-block">
-                    <button
-                      type="button"
-                      tabindex="-1"
-                      @click="showTextColorPicker = !showTextColorPicker"
-                      class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 flex items-center gap-1"
-                      title="Text Color"
-                    >
-                      A
-                      <span class="w-4 h-1 bg-current"></span>
-                    </button>
+                    <button type="button" tabindex="-1" @click="showTextColorPicker = !showTextColorPicker" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Text Color">A</button>
                     <div v-if="showTextColorPicker" class="absolute z-10 mt-1 p-2 bg-white border border-gray-300 rounded shadow-lg">
-                      <input
-                        type="color"
-                        v-model="textColor"
-                        @change="applyTextColor(textColor)"
-                        class="w-20 h-8"
-                      />
-                      <button
-                        @click="editor.chain().focus().unsetColor().run(); showTextColorPicker = false"
-                        class="mt-1 px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200 w-full"
-                      >
-                        Clear
-                      </button>
+                      <input type="color" v-model="textColor" @change="applyTextColor(textColor)" class="w-20 h-8" />
+                      <button @click="editor.chain().focus().unsetColor().run(); showTextColorPicker = false" class="mt-1 px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200 w-full">Clear</button>
                     </div>
                   </div>
-
-                  <!-- Highlight Color -->
                   <div class="relative inline-block">
-                    <button
-                      type="button"
-                      tabindex="-1"
-                      @click="showHighlightColorPicker = !showHighlightColorPicker"
-                      :class="{ 'bg-gray-200': editor.isActive('highlight') }"
-                      class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                      title="Highlight"
-                    >
-                      🎨
-                    </button>
+                    <button type="button" tabindex="-1" @click="showHighlightColorPicker = !showHighlightColorPicker" :class="{ 'bg-gray-200': editor.isActive('highlight') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Highlight">🎨</button>
                     <div v-if="showHighlightColorPicker" class="absolute z-10 mt-1 p-2 bg-white border border-gray-300 rounded shadow-lg">
-                      <input
-                        type="color"
-                        v-model="highlightColor"
-                        @change="applyHighlight(highlightColor)"
-                        class="w-20 h-8"
-                      />
-                      <button
-                        @click="editor.chain().focus().unsetHighlight().run(); showHighlightColorPicker = false"
-                        class="mt-1 px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200 w-full"
-                      >
-                        Clear
-                      </button>
+                      <input type="color" v-model="highlightColor" @change="applyHighlight(highlightColor)" class="w-20 h-8" />
+                      <button @click="editor.chain().focus().unsetHighlight().run(); showHighlightColorPicker = false" class="mt-1 px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200 w-full">Clear</button>
                     </div>
                   </div>
-                </div>
 
-                <!-- Row 2: Headings & Alignment -->
-                <div class="flex flex-wrap gap-1 mb-2">
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleHeading({ level: 1 }).run()"
-                    :class="{ 'bg-gray-200': editor.isActive('heading', { level: 1 }) }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-bold"
-                    title="Heading 1"
-                  >
-                    H1
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleHeading({ level: 2 }).run()"
-                    :class="{ 'bg-gray-200': editor.isActive('heading', { level: 2 }) }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-bold"
-                    title="Heading 2"
-                  >
-                    H2
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleHeading({ level: 3 }).run()"
-                    :class="{ 'bg-gray-200': editor.isActive('heading', { level: 3 }) }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-bold"
-                    title="Heading 3"
-                  >
-                    H3
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().setParagraph().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('paragraph') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Paragraph"
-                  >
-                    P
-                  </button>
+                  <div class="border-l border-gray-300 mx-1"></div>
+
+                  <!-- Headings -->
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleHeading({ level: 1 }).run()" :class="{ 'bg-gray-200': editor.isActive('heading', { level: 1 }) }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 font-bold" title="Heading 1">H1</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleHeading({ level: 2 }).run()" :class="{ 'bg-gray-200': editor.isActive('heading', { level: 2 }) }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 font-bold" title="Heading 2">H2</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleHeading({ level: 3 }).run()" :class="{ 'bg-gray-200': editor.isActive('heading', { level: 3 }) }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 font-bold" title="Heading 3">H3</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().setParagraph().run()" :class="{ 'bg-gray-200': editor.isActive('paragraph') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Paragraph">P</button>
 
                   <div class="border-l border-gray-300 mx-1"></div>
 
                   <!-- Text Alignment -->
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().setTextAlign('left').run()"
-                    :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'left' }) }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Align Left"
-                  >
-                    ⫷
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().setTextAlign('center').run()"
-                    :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'center' }) }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Align Center"
-                  >
-                    ≡
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().setTextAlign('right').run()"
-                    :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'right' }) }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Align Right"
-                  >
-                    ⫸
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().setTextAlign('justify').run()"
-                    :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'justify' }) }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Justify"
-                  >
-                    ▤
-                  </button>
-                </div>
-
-                <!-- Row 3: Lists, Images & Tables -->
-                <div class="flex flex-wrap gap-1">
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleBulletList().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('bulletList') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Bullet List"
-                  >
-                    •
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleOrderedList().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('orderedList') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Numbered List"
-                  >
-                    1.
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleBlockquote().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('blockquote') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Quote"
-                  >
-                    "
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().toggleCodeBlock().run()"
-                    :class="{ 'bg-gray-200': editor.isActive('codeBlock') }"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-mono"
-                    title="Code Block"
-                  >
-                    &lt;/&gt;
-                  </button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().setTextAlign('left').run()" :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'left' }) }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Align Left">⫷</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().setTextAlign('center').run()" :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'center' }) }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Align Center">≡</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().setTextAlign('right').run()" :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'right' }) }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Align Right">⫸</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().setTextAlign('justify').run()" :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'justify' }) }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Justify">▤</button>
 
                   <div class="border-l border-gray-300 mx-1"></div>
 
-                  <!-- Image Upload -->
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="$refs.imageInput.click()"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Upload Image"
-                  >
-                    📷
-                  </button>
-                  <input
-                    ref="imageInput"
-                    type="file"
-                    accept="image/*"
-                    @change="uploadImage"
-                    class="hidden"
-                  />
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="addImage"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Insert Image URL"
-                  >
-                    🖼️
-                  </button>
-
-                  <!-- Table -->
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="insertTable"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Insert Table"
-                  >
-                    ⊞
-                  </button>
+                  <!-- Lists -->
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleBulletList().run()" :class="{ 'bg-gray-200': editor.isActive('bulletList') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Bullet List">•</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleOrderedList().run()" :class="{ 'bg-gray-200': editor.isActive('orderedList') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Numbered List">1.</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleBlockquote().run()" :class="{ 'bg-gray-200': editor.isActive('blockquote') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Quote">"</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().toggleCodeBlock().run()" :class="{ 'bg-gray-200': editor.isActive('codeBlock') }" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 font-mono" title="Code Block">&lt;/&gt;</button>
 
                   <div class="border-l border-gray-300 mx-1"></div>
 
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().setHorizontalRule().run()"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
-                    title="Horizontal Line"
-                  >
-                    —
-                  </button>
+                  <!-- Images & Tables -->
+                  <button type="button" tabindex="-1" @click="$refs.imageInput.click()" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Upload Image">📷</button>
+                  <input ref="imageInput" type="file" accept="image/*" @change="uploadImage" class="hidden" />
+                  <button type="button" tabindex="-1" @click="insertTable" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Insert Table">⊞</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().setHorizontalRule().run()" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100" title="Horizontal Line">—</button>
 
                   <div class="border-l border-gray-300 mx-1"></div>
 
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().undo().run()"
-                    :disabled="!editor.can().undo()"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Undo"
-                  >
-                    ↶
-                  </button>
-                  <button
-                    type="button"
-                    tabindex="-1"
-                    @click="editor.chain().focus().redo().run()"
-                    :disabled="!editor.can().redo()"
-                    class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Redo"
-                  >
-                    ↷
-                  </button>
+                  <!-- Undo/Redo -->
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().undo().run()" :disabled="!editor.can().undo()" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed" title="Undo">↶</button>
+                  <button type="button" tabindex="-1" @click="editor.chain().focus().redo().run()" :disabled="!editor.can().redo()" class="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed" title="Redo">↷</button>
                 </div>
               </div>
 
               <!-- Tiptap Content Area -->
-              <EditorContent :editor="editor" class="tiptap-editor" />
+              <EditorContent :editor="editor" class="tiptap-editor" @contextmenu="handleContextMenu" />
+            </div>
+
+            <!-- Table Context Menu -->
+            <div v-if="showTableMenu" :style="{ position: 'fixed', top: tableMenuY + 'px', left: tableMenuX + 'px', zIndex: 1000 }" class="bg-white border border-gray-300 rounded shadow-lg py-1 min-w-[180px]">
+              <button @click="executeTableAction('addRowBefore')" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm">Add Row Above</button>
+              <button @click="executeTableAction('addRowAfter')" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm">Add Row Below</button>
+              <button @click="executeTableAction('deleteRow')" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600">Delete Row</button>
+              <div class="border-t border-gray-200 my-1"></div>
+              <button @click="executeTableAction('addColumnBefore')" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm">Add Column Left</button>
+              <button @click="executeTableAction('addColumnAfter')" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm">Add Column Right</button>
+              <button @click="executeTableAction('deleteColumn')" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600">Delete Column</button>
+              <div class="border-t border-gray-200 my-1"></div>
+              <button @click="executeTableAction('deleteTable')" class="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600">Delete Table</button>
             </div>
 
             <!-- Markdown Editor -->
@@ -683,6 +451,7 @@
   <GroupSelectorDialog
     v-model:show="showGroupSelector"
     @groups-selected="handleGroupsSelected"
+    @dialog-closed="handleGroupDialogClosed"
   />
 
   <!-- Group Naming Dialog -->
@@ -759,6 +528,7 @@ import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import ResizableImageExtension from 'tiptap-extension-resize-image'
+import { mergeAttributes } from '@tiptap/core'
 import TextAlign from '@tiptap/extension-text-align'
 import TextStyle from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
@@ -770,6 +540,74 @@ import TableHeader from '@tiptap/extension-table-header'
 import TableCell from '@tiptap/extension-table-cell'
 import GroupSelectorDialog from './GroupSelectorDialog.vue'
 import { session } from '../data/session'
+
+// Custom Image extension that converts resize-image attributes to standard width
+const CustomImage = ResizableImageExtension.extend({
+  addAttributes() {
+    return {
+      src: {
+        default: null,
+      },
+      alt: {
+        default: null,
+      },
+      title: {
+        default: null,
+      },
+      width: {
+        default: null,
+        parseHTML: element => {
+          // Try to get width from various sources
+          const widthAttr = element.getAttribute('width')
+          if (widthAttr) return widthAttr
+
+          const style = element.getAttribute('style')
+          if (style && style.includes('width:')) {
+            const match = style.match(/width:\s*(\d+)px/)
+            if (match) return match[1]
+          }
+
+          const containerStyle = element.getAttribute('containerstyle')
+          if (containerStyle && containerStyle.includes('width:')) {
+            const match = containerStyle.match(/width:\s*(\d+)px/)
+            if (match) return match[1]
+          }
+
+          return null
+        },
+        renderHTML: attributes => {
+          if (!attributes.width) return {}
+          return { width: attributes.width }
+        },
+      },
+      style: {
+        default: null,
+        parseHTML: element => {
+          const width = element.getAttribute('width')
+          const containerStyle = element.getAttribute('containerstyle')
+
+          if (width) {
+            return `width: ${width}px; height: auto;`
+          } else if (containerStyle && containerStyle.includes('width:')) {
+            const match = containerStyle.match(/width:\s*(\d+)px/)
+            if (match) return `width: ${match[1]}px; height: auto;`
+          }
+
+          return element.getAttribute('style')
+        },
+        renderHTML: attributes => {
+          if (!attributes.style) return {}
+          return { style: attributes.style }
+        },
+      },
+    }
+  },
+  renderHTML({ HTMLAttributes }) {
+    // Remove non-standard attributes before rendering
+    const { containerstyle, wrapperstyle, ...cleanAttrs } = HTMLAttributes
+    return ['img', mergeAttributes(this.options.HTMLAttributes, cleanAttrs)]
+  },
+})
 
 // Props
 const props = defineProps({
@@ -807,7 +645,7 @@ const editor = useEditor({
   extensions: [
     StarterKit,
     Underline,
-    ResizableImageExtension.configure({
+    CustomImage.configure({
       inline: true,
       allowBase64: true,
     }),
@@ -836,27 +674,63 @@ const editor = useEditor({
     },
   },
   onUpdate: ({ editor }) => {
-    formData.value.message = editor.getHTML()
+    const html = editor.getHTML()
+    console.log('Editor HTML updated:', html)
+    formData.value.message = html
   },
 })
 
-// Image upload handler
-const imageInput = ref(null)
-const addImage = () => {
-  const url = prompt('Enter image URL (or paste base64 data URI):')
-  if (url) {
-    editor.value.chain().focus().setImage({ src: url }).run()
-  }
-}
 
-const uploadImage = (event) => {
+const uploadImage = async (event) => {
   const file = event.target.files[0]
   if (file && file.type.startsWith('image/')) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      editor.value.chain().focus().setImage({ src: e.target.result }).run()
+    try {
+      // Upload file to server first
+      const formData = new FormData()
+      formData.append('file', file, file.name)
+      formData.append('is_private', '0')
+
+      // Get CSRF token
+      const getCookie = (name) => {
+        const value = `; ${document.cookie}`
+        const parts = value.split(`; ${name}=`)
+        if (parts.length === 2) return parts.pop().split(';').shift()
+        return null
+      }
+
+      const csrfToken = getCookie('csrf_token')
+
+      const uploadResponse = await fetch('/api/method/upload_file', {
+        method: 'POST',
+        headers: {
+          'X-Frappe-CSRF-Token': csrfToken,
+        },
+        body: formData
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed with status ${uploadResponse.status}`)
+      }
+
+      const result = await uploadResponse.json()
+      if (result.message && result.message.file_url) {
+        // Get the full URL (not just relative path)
+        const imageUrl = window.location.origin + result.message.file_url
+        console.log('Image uploaded to:', imageUrl)
+
+        // Insert image - the CustomImage extension will handle resize
+        editor.value.chain().focus().setImage({ src: imageUrl }).run()
+      } else {
+        throw new Error('Upload response missing file_url')
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      alert(`Failed to upload image: ${error.message}`)
     }
-    reader.readAsDataURL(file)
+  }
+  // Reset file input
+  if (event.target) {
+    event.target.value = ''
   }
 }
 
@@ -886,6 +760,60 @@ const applyFontSize = () => {
 const insertTable = () => {
   editor.value.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
 }
+
+// Table context menu
+const showTableMenu = ref(false)
+const tableMenuX = ref(0)
+const tableMenuY = ref(0)
+
+const handleContextMenu = (event) => {
+  // Check if click is inside a table
+  const target = event.target
+  const isInTable = target.closest('table')
+
+  if (isInTable) {
+    event.preventDefault()
+    tableMenuX.value = event.clientX
+    tableMenuY.value = event.clientY
+    showTableMenu.value = true
+  }
+}
+
+const executeTableAction = (action) => {
+  if (editor.value) {
+    switch (action) {
+      case 'addRowBefore':
+        editor.value.chain().focus().addRowBefore().run()
+        break
+      case 'addRowAfter':
+        editor.value.chain().focus().addRowAfter().run()
+        break
+      case 'deleteRow':
+        editor.value.chain().focus().deleteRow().run()
+        break
+      case 'addColumnBefore':
+        editor.value.chain().focus().addColumnBefore().run()
+        break
+      case 'addColumnAfter':
+        editor.value.chain().focus().addColumnAfter().run()
+        break
+      case 'deleteColumn':
+        editor.value.chain().focus().deleteColumn().run()
+        break
+      case 'deleteTable':
+        editor.value.chain().focus().deleteTable().run()
+        break
+    }
+  }
+  showTableMenu.value = false
+}
+
+// Close context menu when clicking outside
+onMounted(() => {
+  document.addEventListener('click', () => {
+    showTableMenu.value = false
+  })
+})
 
 // Recipients handling
 const recipientInput = ref(null)
@@ -1423,6 +1351,15 @@ const handleGroupsSelected = (groups) => {
   }))
 }
 
+const handleGroupDialogClosed = () => {
+  // Refocus on recipients input when group selector dialog closes
+  setTimeout(() => {
+    if (recipientInput.value) {
+      recipientInput.value.focus()
+    }
+  }, 100)
+}
+
 const saveDraft = async () => {
   const proceedWithSave = async (finalGroups) => {
     try {
@@ -1489,7 +1426,7 @@ const saveDraft = async () => {
         sender_email: formData.value.sender_email,
         send_from: formData.value.send_from || `${formData.value.sender_name} <${formData.value.sender_email}>`,
         content_type: formData.value.content_type,
-        message: formData.value.message || '',
+        message: addTableBorders(formData.value.message) || '',
         message_md: formData.value.message_md || '',
         message_html: formData.value.message_html || '',
         send_unsubscribe_link: formData.value.send_unsubscribe_link ? 1 : 0,
@@ -1509,8 +1446,8 @@ const saveDraft = async () => {
 
       // Save Newsletter document using Frappe API
       const result = await call('frappe.client.insert', {
-        doc: newsletterData
-      })
+          doc: newsletterData
+        })
 
       console.log('Newsletter saved:', result)
 
@@ -1613,6 +1550,16 @@ const saveDraft = async () => {
   }
 }
 
+// Helper function to add table borders for email compatibility
+const addTableBorders = (html) => {
+  if (!html) return html
+  let processedHtml = html
+  processedHtml = processedHtml.replace(/<table/g, '<table class="table table-bordered" style="width:100%; border-collapse:collapse; border:1px solid #d1d5db"')
+  processedHtml = processedHtml.replace(/<td([^>]*)>/g, '<td$1 style="border:1px solid #d1d5db; padding:8px;">')
+  processedHtml = processedHtml.replace(/<th([^>]*)>/g, '<th$1 style="border:1px solid #d1d5db; padding:8px; font-weight:bold;">')
+  return processedHtml
+}
+
 const sendEmail = async () => {
   const proceedWithSend = async (finalGroups) => {
     try {
@@ -1679,7 +1626,7 @@ const sendEmail = async () => {
         sender_email: formData.value.sender_email,
         send_from: formData.value.send_from || `${formData.value.sender_name} <${formData.value.sender_email}>`,
         content_type: formData.value.content_type,
-        message: formData.value.message || '',
+        message: addTableBorders(formData.value.message) || '',
         message_md: formData.value.message_md || '',
         message_html: formData.value.message_html || '',
         send_unsubscribe_link: formData.value.send_unsubscribe_link ? 1 : 0,
@@ -1696,6 +1643,7 @@ const sendEmail = async () => {
       }
 
       console.log('Creating Newsletter:', newsletterData)
+      console.log('Message HTML being sent:', addTableBorders(formData.value.message))
 
       // Step 1: Save Newsletter document using Frappe API
       // Note: Frappe will auto-generate a unique name based on the subject if there's a duplicate
@@ -1878,6 +1826,12 @@ const sendEmail = async () => {
 watch(() => props.show, (isOpen) => {
   if (isOpen) {
     resetForm()
+    // Focus on recipients input after dialog opens
+    setTimeout(() => {
+      if (recipientInput.value) {
+        recipientInput.value.focus()
+      }
+    }, 100)
   }
 })
 

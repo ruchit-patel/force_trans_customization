@@ -20,6 +20,7 @@
       <div class="relative">
         <FeatherIcon name="search" class="w-4 h-4 text-gray-400 absolute left-3 top-3" />
         <input
+          ref="searchInput"
           v-model="searchQuery"
           type="text"
           placeholder="Search email groups..."
@@ -129,7 +130,7 @@ const props = defineProps({
 })
 
 // Emits
-const emit = defineEmits(['update:show', 'groups-selected'])
+const emit = defineEmits(['update:show', 'groups-selected', 'dialog-closed'])
 
 // Dialog state
 const isDialogOpen = computed({
@@ -138,6 +139,7 @@ const isDialogOpen = computed({
 })
 
 // Component state
+const searchInput = ref(null)
 const searchQuery = ref('')
 const isLoading = ref(false)
 const emailGroups = ref([])
@@ -258,6 +260,8 @@ const closeDialog = () => {
   // Reset selections when closing
   selectedGroups.value = []
   searchQuery.value = ''
+  // Emit dialog closed event
+  emit('dialog-closed')
 }
 
 const formatDate = (dateString) => {
@@ -285,6 +289,12 @@ onMounted(() => {
 watch(() => props.show, (isOpen) => {
   if (isOpen) {
     loadEmailGroups()
+    // Focus on search input after dialog opens
+    setTimeout(() => {
+      if (searchInput.value) {
+        searchInput.value.focus()
+      }
+    }, 100)
   }
 })
 </script>
