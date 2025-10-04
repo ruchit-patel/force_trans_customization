@@ -196,6 +196,7 @@
                 <div class="flex flex-wrap gap-1 mb-2">
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleBold().run()"
                     :class="{ 'bg-gray-200': editor.isActive('bold') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-bold"
@@ -205,6 +206,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleItalic().run()"
                     :class="{ 'bg-gray-200': editor.isActive('italic') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 italic"
@@ -214,6 +216,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleUnderline().run()"
                     :class="{ 'bg-gray-200': editor.isActive('underline') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 underline"
@@ -223,6 +226,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleStrike().run()"
                     :class="{ 'bg-gray-200': editor.isActive('strike') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 line-through"
@@ -237,6 +241,7 @@
                   <div class="relative inline-block">
                     <button
                       type="button"
+                      tabindex="-1"
                       @click="showTextColorPicker = !showTextColorPicker"
                       class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 flex items-center gap-1"
                       title="Text Color"
@@ -264,6 +269,7 @@
                   <div class="relative inline-block">
                     <button
                       type="button"
+                      tabindex="-1"
                       @click="showHighlightColorPicker = !showHighlightColorPicker"
                       :class="{ 'bg-gray-200': editor.isActive('highlight') }"
                       class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -292,6 +298,7 @@
                 <div class="flex flex-wrap gap-1 mb-2">
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleHeading({ level: 1 }).run()"
                     :class="{ 'bg-gray-200': editor.isActive('heading', { level: 1 }) }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-bold"
@@ -301,6 +308,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleHeading({ level: 2 }).run()"
                     :class="{ 'bg-gray-200': editor.isActive('heading', { level: 2 }) }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-bold"
@@ -310,6 +318,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleHeading({ level: 3 }).run()"
                     :class="{ 'bg-gray-200': editor.isActive('heading', { level: 3 }) }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-bold"
@@ -319,6 +328,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().setParagraph().run()"
                     :class="{ 'bg-gray-200': editor.isActive('paragraph') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -332,6 +342,7 @@
                   <!-- Text Alignment -->
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().setTextAlign('left').run()"
                     :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'left' }) }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -341,6 +352,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().setTextAlign('center').run()"
                     :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'center' }) }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -350,6 +362,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().setTextAlign('right').run()"
                     :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'right' }) }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -359,6 +372,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().setTextAlign('justify').run()"
                     :class="{ 'bg-gray-200': editor.isActive({ textAlign: 'justify' }) }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -372,6 +386,7 @@
                 <div class="flex flex-wrap gap-1">
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleBulletList().run()"
                     :class="{ 'bg-gray-200': editor.isActive('bulletList') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -381,6 +396,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleOrderedList().run()"
                     :class="{ 'bg-gray-200': editor.isActive('orderedList') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -390,6 +406,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleBlockquote().run()"
                     :class="{ 'bg-gray-200': editor.isActive('blockquote') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
@@ -399,6 +416,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().toggleCodeBlock().run()"
                     :class="{ 'bg-gray-200': editor.isActive('codeBlock') }"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 font-mono"
@@ -412,6 +430,7 @@
                   <!-- Image Upload -->
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="$refs.imageInput.click()"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
                     title="Upload Image"
@@ -427,6 +446,7 @@
                   />
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="addImage"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
                     title="Insert Image URL"
@@ -437,6 +457,7 @@
                   <!-- Table -->
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="insertTable"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
                     title="Insert Table"
@@ -448,6 +469,7 @@
 
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().setHorizontalRule().run()"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100"
                     title="Horizontal Line"
@@ -459,6 +481,7 @@
 
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().undo().run()"
                     :disabled="!editor.can().undo()"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -468,6 +491,7 @@
                   </button>
                   <button
                     type="button"
+                    tabindex="-1"
                     @click="editor.chain().focus().redo().run()"
                     :disabled="!editor.can().redo()"
                     class="px-3 py-1 text-sm border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -789,6 +813,7 @@ const editor = useEditor({
     }),
     TextAlign.configure({
       types: ['heading', 'paragraph'],
+      defaultAlignment: 'left',
     }),
     TextStyle,
     Color,
@@ -807,6 +832,7 @@ const editor = useEditor({
   editorProps: {
     attributes: {
       class: 'w-full px-3 py-2 focus:outline-none min-h-[200px] max-h-[400px] overflow-y-auto prose prose-sm max-w-none',
+      style: 'text-align: left;',
     },
   },
   onUpdate: ({ editor }) => {
@@ -2069,4 +2095,5 @@ onBeforeUnmount(() => {
 .tiptap-editor .ProseMirror mark {
   @apply px-1 rounded;
 }
+
 </style>
