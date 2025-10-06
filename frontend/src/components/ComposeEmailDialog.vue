@@ -16,6 +16,21 @@
       <!-- Content -->
       <div class="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
         <div class="space-y-6">
+          <!-- From Email Selection -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">From <span class="text-red-500">*</span></label>
+            <select
+              ref="senderEmailSelect"
+              v-model="formData.sender_email"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            >
+              <option v-for="email in availableSenderEmails" :key="email" :value="email">
+                {{ email }}
+              </option>
+            </select>
+          </div>
+
           <!-- Recipients Section -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Recipients <span class="text-red-500">*</span></label>
@@ -632,6 +647,9 @@ const isSaving = ref(false)
 const showGroupSelector = ref(false)
 const sendLater = ref(false)
 
+// Available sender emails - will be populated via API call
+const availableSenderEmails = ref([])
+
 // Group naming dialog state
 const showGroupNamingDialog = ref(false)
 const newGroupName = ref('')
@@ -816,6 +834,7 @@ onMounted(() => {
 })
 
 // Recipients handling
+const senderEmailSelect = ref(null)
 const recipientInput = ref(null)
 const currentEmailInput = ref('')
 const emailPills = ref([]) // Array of { address: string, status: 'valid' | 'invalid' | 'duplicate', reason: string }
@@ -1272,6 +1291,27 @@ const resetForm = () => {
 
   console.log('Default sender email:', userEmail)
   console.log('Default sender name:', senderName)
+
+  // Fetch available sender emails from User Groups where current user is a member
+  call('force_trans_customization.api.user_group_emails.get_user_associated_emails')
+    .then(emails => {
+      console.log('Fetched associated emails:', emails)
+      if (emails && emails.length > 0) {
+        availableSenderEmails.value = emails
+        // Set the first email as default if current sender_email is not in the list
+        if (!emails.includes(formData.value.sender_email)) {
+          formData.value.sender_email = emails[0]
+        }
+      } else {
+        // Fallback to current user's email if no associated emails found
+        availableSenderEmails.value = [userEmail]
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching associated emails:', error)
+      // Fallback to current user's email on error
+      availableSenderEmails.value = [userEmail]
+    })
 
   // Initialize form with defaults first
   formData.value = {
@@ -1826,10 +1866,10 @@ const sendEmail = async () => {
 watch(() => props.show, (isOpen) => {
   if (isOpen) {
     resetForm()
-    // Focus on recipients input after dialog opens
+    // Focus on sender email select box after dialog opens
     setTimeout(() => {
-      if (recipientInput.value) {
-        recipientInput.value.focus()
+      if (senderEmailSelect.value) {
+        senderEmailSelect.value.focus()
       }
     }, 100)
   }
