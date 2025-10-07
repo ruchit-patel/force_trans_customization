@@ -1354,9 +1354,19 @@ def create_support_issue_from_communication(communication, sender_email, sender_
         issue.company = get_default_company(communication.email_account)
         
         # Auto-assign to user group based on recipient email
-        user_group = get_user_group_by_recipient_email(to_emails)
+        user_group = get_user_group_by_recipient_email(to_emails, communication.email_account, headers=getattr(communication, 'email_headers', None))
         if user_group:
             issue.custom_assigned_csm_team = user_group
+        else:
+            # If no user group found, try to get any as fallback
+            default_group = get_default_user_group()
+            if default_group:
+                issue.custom_assigned_csm_team = default_group
+            else:
+                frappe.log_error(
+                    message=f"No user group could be assigned for email to: {to_emails}. Email Account: {communication.email_account}",
+                    title="User Group Assignment Warning"
+                )
         
         # Save the issue
         issue.insert(ignore_permissions=True)
@@ -1697,43 +1707,107 @@ def extract_delivered_to_from_headers(headers):
         return None
 
 
-def get_user_group_by_recipient_email(to_emails):
+def get_user_group_by_recipient_email(to_emails, email_account=None, headers=None):
     """
     Map recipient email addresses to user groups for auto-assignment
     Uses the custom_associated_email field from User Group doctype
     Now supports multiple comma-separated emails in the associated_email field
+
+    Enhanced to handle:
+    - Forwarded emails (extracts X-Forwarded-To, X-Original-To)
+    - Bounce addresses (extracts Return-Path, X-Failed-Recipients)
+    - Fallback to email account's default user group
     """
     try:
         if not to_emails:
             return None
-        
+
+        # Parse headers if provided as JSON string
+        parsed_headers = {}
+        if headers:
+            if isinstance(headers, str):
+                try:
+                    parsed_headers = json.loads(headers)
+                except:
+                    pass
+            elif isinstance(headers, dict):
+                parsed_headers = headers
+
         # Get all user groups with associated emails
         user_groups_with_emails = frappe.db.get_list(
             "User Group",
             filters={"custom_associated_email": ["!=", ""]},
             fields=["name", "custom_associated_email"]
         )
-        
-        # Check each recipient email against user groups with associated emails
+
+        # Collect all possible recipient emails to check
+        emails_to_check = []
+
+        # 1. Add direct recipients
         for email in to_emails:
-            email = email.strip().lower()
-            
+            emails_to_check.append(email.strip().lower())
+
+        # 2. Extract original recipients from forwarded email headers
+        if parsed_headers:
+            forward_headers = ['X-Forwarded-To', 'X-Original-To', 'X-Forwarded-For']
+            for header in forward_headers:
+                if header in parsed_headers:
+                    forwarded_email = parsed_headers[header].strip()
+                    if '<' in forwarded_email and '>' in forwarded_email:
+                        forwarded_email = forwarded_email[forwarded_email.find('<')+1:forwarded_email.find('>')]
+                    emails_to_check.append(forwarded_email.lower())
+                    frappe.log(f"Found forwarded recipient: {forwarded_email} from header {header}")
+
+            # 3. Check for bounce/failure scenarios - extract original recipient
+            bounce_headers = ['X-Failed-Recipients', 'X-Actual-Recipients', 'Final-Recipient']
+            for header in bounce_headers:
+                if header in parsed_headers:
+                    failed_email = parsed_headers[header].strip()
+                    # Parse formats like "rfc822; user@domain.com"
+                    if ';' in failed_email:
+                        failed_email = failed_email.split(';')[-1].strip()
+                    if '<' in failed_email and '>' in failed_email:
+                        failed_email = failed_email[failed_email.find('<')+1:failed_email.find('>')]
+                    emails_to_check.append(failed_email.lower())
+                    frappe.log(f"Found failed recipient: {failed_email} from header {header}")
+
+        # Check each collected email against user groups
+        for email in emails_to_check:
             # Check each user group's associated emails
             for user_group in user_groups_with_emails:
                 if not user_group.custom_associated_email:
                     continue
-                
+
                 # Split the associated emails by comma and check each one
                 associated_emails = [e.strip().lower() for e in user_group.custom_associated_email.split(',')]
-                
+
                 if email in associated_emails:
-                    frappe.log(f"Auto-assigned issue to user group: {user_group.name} based on associated email: {email}")
+                    frappe.log(f"Auto-assigned issue to user group: {user_group.name} based on email: {email}")
                     return user_group.name
-        
+
         return None
-        
+
     except Exception as e:
         frappe.log_error(f"Error mapping email to user group: {str(e)}")
+        return None
+
+
+def get_default_user_group():
+    """
+    Get default user group for unmatched emails
+    based on First available user group as last resort
+    """
+    try:
+        # Last resort: get the first available user group
+        first_group = frappe.db.get_value("User Group", {}, "name")
+        if first_group:
+            frappe.log(f"Using first available user group as fallback: {first_group}")
+            return first_group
+        
+        return None
+
+    except Exception as e:
+        frappe.log_error(f"Error getting default user group: {str(e)}")
         return None
 
 
@@ -1746,16 +1820,16 @@ def get_user_group_from_email_account(email_account):
     try:
         if not email_account:
             return None
-            
+
         # Check if Email Account has a custom field for user group mapping
         # You would need to add a custom field 'default_user_group' to Email Account doctype
         user_group = frappe.db.get_value("Email Account", email_account, "default_user_group")
-        
+
         if user_group and frappe.db.exists("User Group", user_group):
             return user_group
-            
+
         return None
-        
+
     except Exception as e:
         frappe.log_error(f"Error getting user group from email account: {str(e)}")
         return None
