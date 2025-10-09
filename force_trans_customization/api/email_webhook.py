@@ -1,7 +1,7 @@
 # webhook_handler.py
-# 
+#
 # Email Webhook Handler for AWS SES with Support Issue Creation
-# 
+#
 # This module processes incoming emails via webhook and:
 # 1. Creates Communication records from email data
 # 2. Automatically creates Support Issues from communications
@@ -14,7 +14,7 @@
 # - Issue thread detection (links replies to existing issues)
 # - Customer/Contact matching by email address
 # - Attachment processing and file storage
-# - Support for both structured and raw email data
+# - Processes structured email data from AWS Lambda (pre-parsed)
 #
 import frappe
 import json
@@ -35,7 +35,7 @@ THREAD_ID_PATTERN = re.compile(r"(?<=\[)[\w/-]+")
 
 
 @frappe.whitelist(methods=["POST"])
-def test():
+def save_email():
     """
     Webhook handler for AWS SES emails processed by Lambda
     Maps the email data to Frappe's email structure
@@ -97,14 +97,11 @@ def test():
 
 def process_ses_email(email_data):
     """
-    Process the SES email data and create Communication record
+    Process the SES email data and create Communication record.
+    Expects structured data (parsed by Lambda) with fields: subject, body_text,
+    body_html, attachments, headers, from_email, to_emails, etc.
     """
     try:
-        # Check if raw email content is provided
-        if "raw_email" in email_data:
-            # Parse the raw email to extract all components
-            return process_raw_email(email_data["raw_email"])
-        
         # Extract email details from structured data
         # NOTE: Don't use message_id from API data as it might be incorrect
         # message_id = email_data.get("message_id")  # This is often wrong!
@@ -188,171 +185,6 @@ def process_ses_email(email_data):
         frappe.log_error(
             message=f"Error in process_ses_email: {str(e)}",
             title="SES Email Processing Error"
-        )
-        raise
-
-
-def process_raw_email(raw_email_content):
-    """
-    Process raw email content and extract all components including attachments
-    """
-    try:
-        # Parse the raw email
-        msg = email.message_from_string(raw_email_content)
-
-        # Extract basic email info
-        message_id = msg.get('Message-ID', '')
-        subject = decode_email_header(msg.get('Subject', '')) or "(No Subject)"
-        from_email = msg.get('From', '')
-        to_emails = [addr.strip() for addr in msg.get('To', '').split(',')]
-        date_header = msg.get('Date', '')
-        
-        # Extract email body
-        body_text = ""
-        body_html = ""
-        attachments = []
-        
-        # Process multipart message
-        if msg.is_multipart():
-            for part in msg.walk():
-                content_type = part.get_content_type()
-                content_disposition = str(part.get('Content-Disposition', ''))
-                
-                # Skip multipart containers
-                if content_type.startswith('multipart/'):
-                    continue
-                
-                # Handle text parts
-                if content_type == 'text/plain' and 'attachment' not in content_disposition:
-                    payload = part.get_payload(decode=True)
-                    if isinstance(payload, bytes):
-                        body_text = payload.decode(part.get_content_charset() or 'utf-8', errors='ignore')
-                    else:
-                        body_text = str(payload)
-                elif content_type == 'text/html' and 'attachment' not in content_disposition:
-                    payload = part.get_payload(decode=True)
-                    if isinstance(payload, bytes):
-                        body_html = payload.decode(part.get_content_charset() or 'utf-8', errors='ignore')
-                    else:
-                        body_html = str(payload)
-                
-                # Handle attachments and inline images
-                elif 'attachment' in content_disposition or 'inline' in content_disposition or part.get_filename() or part.get('Content-ID'):
-                    filename = part.get_filename()
-                    content_id = part.get('Content-ID')
-                    
-                    if filename or content_id:
-                        if filename:
-                            filename = decode_email_header(filename)
-                        else:
-                            filename = f"inline_{content_id.strip('<>')}" if content_id else "unnamed_attachment"
-                            
-                        attachment_data = part.get_payload(decode=True)
-                        
-                        attachment_info = {
-                            'filename': filename,
-                            'content_type': content_type,
-                            'content': attachment_data,
-                            'size': len(attachment_data) if attachment_data else 0
-                        }
-                        
-                        # Add Content-ID for inline images
-                        if content_id:
-                            attachment_info['content_id'] = content_id.strip('<>')
-                            attachment_info['is_inline'] = True
-                        else:
-                            attachment_info['is_inline'] = False
-                            
-                        attachments.append(attachment_info)
-        else:
-            # Single part message
-            content_type = msg.get_content_type()
-            if content_type == 'text/plain':
-                payload = msg.get_payload(decode=True)
-                if isinstance(payload, bytes):
-                    body_text = payload.decode(msg.get_content_charset() or 'utf-8', errors='ignore')
-                else:
-                    body_text = str(payload)
-            elif content_type == 'text/html':
-                payload = msg.get_payload(decode=True)
-                if isinstance(payload, bytes):
-                    body_html = payload.decode(msg.get_content_charset() or 'utf-8', errors='ignore')
-                else:
-                    body_html = str(payload)
-        
-        # Handle empty to_emails with Delivered-To fallback
-        if not to_emails or len(to_emails) == 0:
-            delivered_to = extract_delivered_to_from_headers(dict(msg.items()))
-            if delivered_to:
-                to_emails = [delivered_to]
-                frappe.log(f"Using Delivered-To header {delivered_to} as to_emails was empty in raw email processing")
-        
-        # Find matching Email Account
-        primary_recipient = to_emails[0] if to_emails else ""
-        email_account = find_matching_email_account(primary_recipient, to_emails)
-        
-        # Extract In-Reply-To header for reply detection
-        in_reply_to = msg.get('In-Reply-To', '')
-        if in_reply_to:
-            in_reply_to = get_string_between('<', in_reply_to, '>')
-        
-        # Extract message_id properly using our enhanced function
-        if message_id:
-            # Use the same function for consistency
-            message_id = extract_proper_message_id({'Message-ID': message_id})
-        else:
-            # Try to extract from all headers
-            message_id = extract_proper_message_id(dict(msg.items()))
-        
-        # Create Communication record
-        communication = create_communication_record(
-            message_id=message_id,
-            timestamp=date_header,
-            from_email=from_email,
-            to_emails=to_emails,
-            subject=subject,
-            body_text=body_text,
-            body_html=body_html,
-            headers=dict(msg.items()),
-            email_account=email_account,
-            in_reply_to=in_reply_to
-        )
-        
-        # Process attachments
-        if attachments:
-            process_email_attachments(communication, attachments)
-        
-        # Link to relevant documents if possible
-        link_communication_to_documents(communication)
-        
-        return communication
-        
-    except Exception as e:
-        # Use handle_bad_emails to save the problematic email for investigation
-        try:
-            # Try to parse email to get minimal info for saving
-            msg = email.message_from_string(raw_email_content) if raw_email_content else None
-            to_emails = []
-            email_account_name = None
-
-            if msg:
-                to_header = msg.get('To', '')
-                if to_header:
-                    to_emails = [addr.strip() for addr in to_header.split(',')]
-                    email_account_name = find_matching_email_account(to_emails[0], to_emails) if to_emails else None
-
-            handle_bad_emails(
-                email_account_name=email_account_name,
-                uid=msg.get('Message-ID', 'raw_email_unknown') if msg else 'raw_email_unknown',
-                raw=raw_email_content,
-                reason=f"Raw email processing failed: {str(e)}"
-            )
-        except Exception as handle_error:
-            frappe.log_error(f"Failed to handle bad raw email: {str(handle_error)}")
-
-        frappe.log_error(
-            message=f"Error in process_raw_email: {str(e)}",
-            title="Raw Email Processing Error"
         )
         raise
 
@@ -860,131 +692,33 @@ def parse_email_address(email_string):
         return None, email_string.strip()
 
 
-def process_email_attachments(communication, attachments):
-    """
-    Process email attachments and save them as File documents
-    Enhanced version with better inline image handling
-    """
-    inline_images = {}  # Map content_id to file_url for HTML replacement
-    has_attachments = False
-    
-    # Sort attachments to process inline images first, in correct order
-    inline_attachments = [att for att in attachments if att.get("is_inline", False)]
-    regular_attachments = [att for att in attachments if not att.get("is_inline", False)]
-    
-    # Process inline images first
-    for attachment in inline_attachments:
-        try:
-            filename = attachment.get("filename")
-            content_type = attachment.get("content_type")
-            content = attachment.get("content")
-            content_id = attachment.get("content_id")
-            
-            if content and filename:
-                # Create File document
-                file_doc = create_file_document(
-                    filename=filename,
-                    content=content,
-                    content_type=content_type,
-                    communication=communication
-                )
-                
-                # Track inline images for HTML content replacement
-                if content_id:
-                    inline_images[content_id] = file_doc.file_url
-                    frappe.log(f"Processed inline image: CID={content_id}, Filename={filename}, URL={file_doc.file_url}")
-        
-        except Exception as e:
-            frappe.log_error(
-                message=f"Error processing inline image {filename}: {str(e)}",
-                title="Inline Image Processing Error"
-            )
-    
-    # Process regular attachments
-    for attachment in regular_attachments:
-        try:
-            filename = attachment.get("filename")
-            content_type = attachment.get("content_type")
-            content = attachment.get("content")
-            
-            if content and filename:
-                # Create File document
-                file_doc = create_file_document(
-                    filename=filename,
-                    content=content,
-                    content_type=content_type,
-                    communication=communication
-                )
-                
-                has_attachments = True
-                frappe.log(f"Processed regular attachment: {filename}")
-        
-        except Exception as e:
-            frappe.log_error(
-                message=f"Error processing attachment {filename}: {str(e)}",
-                title="Attachment Processing Error"
-            )
-    
-    # Replace cid: references in HTML content with actual file URLs
-    if inline_images and communication.content:
-        updated_content = communication.content
-        
-        # Log the replacement process
-        frappe.log(f"Replacing CID references in HTML content. Found {len(inline_images)} inline images.")
-        
-        for content_id, file_url in inline_images.items():
-            # Replace cid:content_id with the actual file URL
-            cid_pattern = f"cid:{content_id}"
-            if cid_pattern in updated_content:
-                updated_content = updated_content.replace(cid_pattern, file_url)
-                frappe.log(f"Replaced {cid_pattern} with {file_url}")
-            else:
-                frappe.log(f"Warning: CID pattern {cid_pattern} not found in HTML content")
-        
-        communication.content = updated_content
-    
-    # Update has_attachment flag
-    if has_attachments or inline_images:
-        if has_attachments:
-            communication.has_attachment = 1
-        
-        # Save communication 
-        communication.save(ignore_permissions=True)
-        frappe.db.commit()
-        
-        frappe.log(f"Updated communication {communication.name} with {len(inline_images)} inline images and {len(regular_attachments)} regular attachments")
-
-
 def process_attachments(communication, attachments, email_data):
     """
-    Process email attachments and save them as File documents
-    Legacy function - keeping for backward compatibility
-    Also handles inline images and updates HTML content references
+    Process email attachments and save them as File documents.
+    Handles inline images and updates HTML content references.
+    Expects attachments with base64-encoded content from Lambda.
     """
-    s3_bucket = email_data.get("s3_bucket")
-    s3_key = email_data.get("s3_key")
     inline_images = {}  # Map content_id to file_url for HTML replacement
     has_attachments = False
-    
+
     for attachment in attachments:
         try:
             filename = attachment.get("filename")
             content_type = attachment.get("content_type")
-            size = attachment.get("size", 0)
             content_id = attachment.get("content_id")
             is_inline = attachment.get("is_inline", False)
-            
-            # If attachment content is provided directly
+
+            # Attachment content is provided as base64 from Lambda
             if "content" in attachment:
                 content = attachment["content"]
                 if isinstance(content, str):
-                    # Assume base64 encoded
+                    # Decode base64 encoded content
                     file_content = base64.b64decode(content)
                 else:
                     file_content = content
             else:
-                # If stored in S3, you might need to fetch it
-                file_content = fetch_attachment_from_s3(s3_bucket, s3_key, filename)
+                frappe.log_error(f"Attachment {filename} missing content field", "Missing Attachment Content")
+                continue
             
             # Create File document
             if file_content and filename:
@@ -1024,36 +758,10 @@ def process_attachments(communication, attachments, email_data):
     if has_attachments:
         communication.has_attachment = 1
     
-    # Save communication 
+    # Save communication
     if has_attachments or inline_images:
         communication.save(ignore_permissions=True)
         frappe.db.commit()
-
-
-def fetch_attachment_from_s3(bucket, key, filename):
-    """
-    Fetch attachment from S3 - implement based on your AWS setup
-    """
-    try:
-        import boto3
-        s3_client = boto3.client('s3')
-        
-        # This would fetch the original email from S3
-        response = s3_client.get_object(Bucket=bucket, Key=key)
-        email_content = response['Body'].read()
-        
-        # Parse the email to extract specific attachment
-        msg = email.message_from_bytes(email_content)
-        
-        for part in msg.walk():
-            if part.get_filename() == filename:
-                return part.get_payload(decode=True)
-        
-        return None
-        
-    except Exception as e:
-        frappe.log_error(f"Error fetching from S3: {str(e)}")
-        return None
 
 
 def create_file_document(filename, content, content_type, communication):
@@ -1133,16 +841,6 @@ def test_webhook():
     """
     return {"status": "success", "message": "Webhook is working"}
 
-
-def validate_webhook_signature(payload, signature, secret):
-    """
-    Validate webhook signature for security (optional)
-    """
-    expected_signature = hashlib.sha256(
-        f"{secret}{payload}".encode()
-    ).hexdigest()
-
-    return signature == expected_signature
 
 
 def handle_bad_emails(email_account_name, uid, raw, reason):

@@ -21,7 +21,7 @@ http = urllib3.PoolManager()
 #ruchit section
 # Configuration - Update these values
 FRAPPE_BASE_URL = "https://4482e326219d.ngrok-free.app"  # Update with your Frappe URL
-FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.test"  # Update endpoint
+FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.save_email"  # Update endpoint
 FRAPPE_API_KEY = "2ae35805831d36f"  # Optional: for authentication
 FRAPPE_API_SECRET = "64fa007d42b0177"  # Optional: for authentication
 
@@ -133,16 +133,12 @@ def process_ses_email(ses_data):
     
     logger.info(f"Searching for email with message ID: {message_id} in bucket: {s3_bucket}")
     
-    # Try different possible file naming patterns for SES
+    # SES stores emails at bucket root with message ID as key
+    # Try the most common pattern first, then fallback to others
     possible_keys = [
-        f"{message_id}",
+        f"{message_id}",  # Most common: directly at root
         f"emails/{message_id}",
-        f"{message_id}.txt",
-        f"emails/{message_id}.txt",
-        f"incoming/{message_id}",
-        f"incoming/{message_id}.txt",
-        f"raw/{message_id}",
-        f"raw/{message_id}.txt"
+        f"incoming/{message_id}"
     ]
     
     # Try to find the actual file in S3
@@ -192,11 +188,7 @@ def process_ses_email(ses_data):
         'attachments': parsed_email.get('attachments', []),
         's3_bucket': s3_bucket,
         's3_key': s3_key,
-        'headers': parsed_email.get('headers', {}),
-        'spam_verdict': receipt_data.get('spamVerdict', {}).get('status'),
-        'virus_verdict': receipt_data.get('virusVerdict', {}).get('status'),
-        'dkim_verdict': receipt_data.get('dkimVerdict', {}).get('status'),
-        'spf_verdict': receipt_data.get('spfVerdict', {}).get('status')
+        'headers': parsed_email.get('headers', {})
     }
     
     # Send webhook to Frappe
