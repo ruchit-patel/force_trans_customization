@@ -18,21 +18,29 @@ logger.setLevel(logging.INFO)
 s3_client = boto3.client('s3')
 http = urllib3.PoolManager()
 
+#ruchit section
 # Configuration - Update these values
-FRAPPE_BASE_URL = "https://1e58a4f6b56d.ngrok-free.app"  # Update with your Frappe URL
+FRAPPE_BASE_URL = "https://4482e326219d.ngrok-free.app"  # Update with your Frappe URL
 FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.test"  # Update endpoint
 FRAPPE_API_KEY = "2ae35805831d36f"  # Optional: for authentication
-FRAPPE_API_SECRET = "87eb7ee488899a1"  # Optional: for authentication
+FRAPPE_API_SECRET = "64fa007d42b0177"  # Optional: for authentication
 
+#jay section
+# FRAPPE_BASE_URL = "https://aac0b20112b1.ngrok-free.app"  # Update with your Frappe URL
+# FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.test"  # Update endpoint
+# FRAPPE_API_KEY = "2a926329922822d"  # Optional: for authentication
+# FRAPPE_API_SECRET = "716ce2a7ff0fdd1"  # Optional: for authentication
+
+#production section
 # FRAPPE_BASE_URL = "https://force-trans.v.frappe.cloud"  # Update with your Frappe URL
 # FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.test"  # Update endpoint
 # FRAPPE_API_KEY = "7cbc2d5765876b8"  # Optional: for authentication
 # FRAPPE_API_SECRET = "8e1e71bcd05a251"  # Optional: for authentication
 
+
 def lambda_handler(event, context):
     try:
         logger.info(f"Received event: {json.dumps(event)}")
-        
         # Process each SES record
         for record in event['Records']:
             if 'ses' in record:
@@ -52,6 +60,65 @@ def lambda_handler(event, context):
             'body': json.dumps(f'Error: {str(e)}')
         }
 
+def organize_s3_file(bucket, original_key, status, error_type=None):
+    """
+    Organize S3 file into proper folder structure
+    
+    Args:
+        bucket: S3 bucket name
+        original_key: Current S3 key
+        status: 'incoming', 'processed', 'failed'
+        error_type: 'parse-error', 'api-error', 'validation-error', etc. (only for failed)
+    
+    Returns:
+        new_key: New organized S3 key
+    """
+    try:
+        # Get current UTC date
+        now = datetime.utcnow()
+        year = now.strftime('%Y')
+        month = now.strftime('%m')
+        day = now.strftime('%d')
+        
+        # Extract filename from original key
+        filename = original_key.split('/')[-1]
+        
+        # Build new key based on status
+        if status == 'failed' and error_type:
+            new_key = f'emails/{year}/{month}/{day}/failed/{error_type}/{filename}'
+        else:
+            new_key = f'emails/{year}/{month}/{day}/{status}/{filename}'
+        
+        # Skip if the file is already in the target location
+        if original_key == new_key:
+            logger.info(f"File already in target location: {original_key}")
+            return original_key
+        
+        # Check if we're moving within organized structure
+        if original_key.startswith('emails/') and new_key.startswith('emails/'):
+            logger.info(f"Moving within organized structure: {original_key} -> {new_key}")
+        elif original_key.startswith('emails/'):
+            logger.info(f"File already in organized structure, moving to: {new_key}")
+        else:
+            logger.info(f"Organizing new file: {original_key} -> {new_key}")
+        
+        # Copy to new location
+        s3_client.copy_object(
+            Bucket=bucket,
+            CopySource={'Bucket': bucket, 'Key': original_key},
+            Key=new_key
+        )
+        
+        # Delete original file
+        s3_client.delete_object(Bucket=bucket, Key=original_key)
+        
+        logger.info(f"Successfully organized file to: {new_key}")
+        return new_key
+        
+    except Exception as e:
+        logger.error(f"Error organizing S3 file: {str(e)}")
+        return original_key  # Return original key if organization fails
+        
 def process_ses_email(ses_data):
     """Process SES email data and send webhook to Frappe"""
     
@@ -84,22 +151,35 @@ def process_ses_email(ses_data):
     ]
     
     # Try to find the actual file in S3
-    s3_key = find_email_in_s3(s3_bucket, possible_keys, message_id)
+    original_s3_key = find_email_in_s3(s3_bucket, possible_keys, message_id)
     
-    if not s3_key:
+    if not original_s3_key:
         logger.error(f"Could not find email file in S3 bucket '{s3_bucket}' with message ID '{message_id}'")
         return
     
-    logger.info(f"Found email at S3 location - Bucket: {s3_bucket}, Key: {s3_key}")
+    logger.info(f"Found email at S3 location - Bucket: {s3_bucket}, Key: {original_s3_key}")
+    
+    # Move to incoming folder first
+    s3_key = organize_s3_file(s3_bucket, original_s3_key, 'incoming')
     
     # Read email from S3
     email_content = read_email_from_s3(s3_bucket, s3_key)
     if not email_content:
         logger.error("Could not read email from S3")
+        # Move to failed/parse-error folder
+        organize_s3_file(s3_bucket, s3_key, 'failed', 'parse-error')
         return
     
     # Parse email
-    parsed_email = parse_email(email_content)
+    try:
+        parsed_email = parse_email(email_content)
+        if not parsed_email or not parsed_email.get('subject'):
+            raise ValueError("Email parsing returned invalid data")
+    except Exception as e:
+        logger.error(f"Email parsing failed: {str(e)}")
+        # Move to failed/parse-error folder
+        organize_s3_file(s3_bucket, s3_key, 'failed', 'parse-error')
+        return
     
     # Prepare webhook payload
     webhook_payload = {
@@ -121,7 +201,17 @@ def process_ses_email(ses_data):
     }
     
     # Send webhook to Frappe
-    send_webhook_to_frappe(webhook_payload)
+    webhook_success = send_webhook_to_frappe(webhook_payload)
+    
+    # Organize based on webhook result
+    if webhook_success:
+        # Move to processed folder
+        final_key = organize_s3_file(s3_bucket, s3_key, 'processed')
+        logger.info(f"Email successfully processed and moved to: {final_key}")
+    else:
+        # Move to failed/api-error folder
+        final_key = organize_s3_file(s3_bucket, s3_key, 'failed', 'api-error')
+        logger.error(f"Email processing failed, moved to: {final_key}")
 
 def find_email_in_s3(bucket, possible_keys, message_id):
     """Try to find the email file in S3 using various possible key patterns"""
@@ -290,17 +380,16 @@ def parse_email(email_content):
         
     except Exception as e:
         logger.error(f"Error parsing email: {str(e)}")
-        return {
-            'subject': 'Error parsing email',
-            'body_text': 'Could not parse email content',
-            'body_html': '',
-            'attachments': [],
-            'headers': {}
-        }
+        raise e  # Re-raise to trigger failed/parse-error handling
     
     
 def send_webhook_to_frappe(payload):
-    """Send webhook to Frappe application"""
+    """
+    Send webhook to Frappe application
+    
+    Returns:
+        bool: True if successful, False if failed
+    """
     try:
         webhook_url = f"{FRAPPE_BASE_URL}{FRAPPE_WEBHOOK_ENDPOINT}"
         
@@ -330,10 +419,11 @@ def send_webhook_to_frappe(payload):
         
         if response.status == 200:
             logger.info("Webhook sent successfully")
+            return True
         else:
             logger.warning(f"Webhook returned non-200 status: {response.status}")
+            return False
             
     except Exception as e:
         logger.error(f"Error sending webhook to Frappe: {str(e)}")
-        # Don't raise exception - we don't want to retry failed webhooks
-        # You might want to send to DLQ or another notification system
+        return False
