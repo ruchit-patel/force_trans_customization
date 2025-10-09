@@ -111,7 +111,7 @@ def process_ses_email(email_data):
         timestamp = email_data.get("timestamp")
         from_email = email_data.get("from_email")
         to_emails = email_data.get("to_emails", [])
-        subject = decode_email_header(email_data.get("subject", ""))
+        subject = decode_email_header(email_data.get("subject", "")) or "(No Subject)"
         body_text = email_data.get("body_text", "")
         body_html = email_data.get("body_html", "")
         attachments = email_data.get("attachments", [])
@@ -202,7 +202,7 @@ def process_raw_email(raw_email_content):
 
         # Extract basic email info
         message_id = msg.get('Message-ID', '')
-        subject = decode_email_header(msg.get('Subject', ''))
+        subject = decode_email_header(msg.get('Subject', '')) or "(No Subject)"
         from_email = msg.get('From', '')
         to_emails = [addr.strip() for addr in msg.get('To', '').split(',')]
         date_header = msg.get('Date', '')
@@ -1316,7 +1316,10 @@ def create_support_issue_from_communication(communication, sender_email, sender_
         issue = frappe.new_doc("Issue")
         
         # Set basic fields - truncate subject to 140 characters to avoid database errors
+        # Handle empty subjects and "(No Subject)" placeholder
         subject = communication.subject or "Support Request"
+        if not subject or subject.strip() == "":
+            subject = "Support Request"
         issue.subject = subject[:140] if len(subject) > 140 else subject
         issue.raised_by = sender_email
         # Use clean text content for issue description, strip HTML if needed

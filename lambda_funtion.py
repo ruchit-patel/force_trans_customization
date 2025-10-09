@@ -31,11 +31,6 @@ FRAPPE_API_SECRET = "64fa007d42b0177"  # Optional: for authentication
 # FRAPPE_API_KEY = "2a926329922822d"  # Optional: for authentication
 # FRAPPE_API_SECRET = "716ce2a7ff0fdd1"  # Optional: for authentication
 
-#production section
-# FRAPPE_BASE_URL = "https://force-trans.v.frappe.cloud"  # Update with your Frappe URL
-# FRAPPE_WEBHOOK_ENDPOINT = "/api/method/force_trans_customization.api.email_webhook.test"  # Update endpoint
-# FRAPPE_API_KEY = "7cbc2d5765876b8"  # Optional: for authentication
-# FRAPPE_API_SECRET = "8e1e71bcd05a251"  # Optional: for authentication
 
 
 def lambda_handler(event, context):
@@ -173,8 +168,12 @@ def process_ses_email(ses_data):
     # Parse email
     try:
         parsed_email = parse_email(email_content)
-        if not parsed_email or not parsed_email.get('subject'):
+        if not parsed_email:
             raise ValueError("Email parsing returned invalid data")
+        # Allow empty subjects - just log a warning
+        if not parsed_email.get('subject'):
+            logger.warning("Email has empty subject - will use default subject")
+            parsed_email['subject'] = ''  # Ensure it's an empty string, not None
     except Exception as e:
         logger.error(f"Email parsing failed: {str(e)}")
         # Move to failed/parse-error folder
